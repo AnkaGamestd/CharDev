@@ -25,6 +25,9 @@ class UStaticMeshComponent;
  *     └─ RightEyeMesh→ attached to HeadMesh at "Eye_R" socket
  *   ArmsMesh       → attached to GetMesh(), follows body skeleton
  *   LegsMesh       → attached to GetMesh(), follows body skeleton
+ *   ShouldersMesh  → attached to GetMesh(), follows body skeleton (accessory)
+ *   LeftBracerMesh → attached to GetMesh(), follows body skeleton (accessory)
+ *   RightBracerMesh→ attached to GetMesh(), follows body skeleton (accessory)
  *
  * Eye system:
  *   Eyes are placed via sockets on the head skeletal mesh. Each head mesh
@@ -73,6 +76,18 @@ public:
 	/** Separate skeletal mesh for beard. Attached to head mesh (leader pose). */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Appearance|Meshes")
 	TObjectPtr<USkeletalMeshComponent> BeardMesh;
+
+	/** Separate skeletal mesh for shoulders accessory. Attached to body mesh (leader pose). */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Appearance|Meshes")
+	TObjectPtr<USkeletalMeshComponent> ShouldersMesh;
+
+	/** Separate skeletal mesh for left bracer accessory. Attached to body mesh (leader pose). */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Appearance|Meshes")
+	TObjectPtr<USkeletalMeshComponent> LeftBracerMesh;
+
+	/** Separate skeletal mesh for right bracer accessory. Attached to body mesh (leader pose). */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Appearance|Meshes")
+	TObjectPtr<USkeletalMeshComponent> RightBracerMesh;
 
 	/**
 	 * Static mesh for the left eye. Attached to HeadMesh at "Eye_L" socket.

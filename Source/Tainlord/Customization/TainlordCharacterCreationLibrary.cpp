@@ -150,9 +150,21 @@ bool UTainlordCharacterCreationLibrary::ApplyPreviewSlot(AActor* PreviewCharacte
 	{
 		return AppearanceComp->ApplySkinTone(NewId);
 	}
+	else if (SlotStr == TEXT("Shoulders"))
+	{
+		return AppearanceComp->ApplyShoulders(NewId);
+	}
+	else if (SlotStr == TEXT("LeftBracer"))
+	{
+		return AppearanceComp->ApplyLeftBracer(NewId);
+	}
+	else if (SlotStr == TEXT("RightBracer"))
+	{
+		return AppearanceComp->ApplyRightBracer(NewId);
+	}
 	else
 	{
-		UE_LOG(LogTemp, Warning, TEXT("TainlordCreation: ApplyPreviewSlot - unknown slot name '%s'. Valid: Head, Hair, Beard, SkinTone"), *SlotStr);
+		UE_LOG(LogTemp, Warning, TEXT("TainlordCreation: ApplyPreviewSlot - unknown slot name '%s'. Valid: Head, Hair, Beard, SkinTone, Shoulders, LeftBracer, RightBracer"), *SlotStr);
 		return false;
 	}
 }

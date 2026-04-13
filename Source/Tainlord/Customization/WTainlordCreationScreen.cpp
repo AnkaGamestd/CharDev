@@ -599,11 +599,14 @@ FName UWTainlordCreationScreen::CategoryToSlotName(EPresetCategory Category)
 {
 	switch (Category)
 	{
-	case EPresetCategory::Head:     return FName(TEXT("Head"));
-	case EPresetCategory::Hair:     return FName(TEXT("Hair"));
-	case EPresetCategory::Beard:    return FName(TEXT("Beard"));
-	case EPresetCategory::SkinTone: return FName(TEXT("SkinTone"));
-	default:                        return NAME_None;
+	case EPresetCategory::Head:        return FName(TEXT("Head"));
+	case EPresetCategory::Hair:        return FName(TEXT("Hair"));
+	case EPresetCategory::Beard:       return FName(TEXT("Beard"));
+	case EPresetCategory::SkinTone:    return FName(TEXT("SkinTone"));
+	case EPresetCategory::Shoulders:   return FName(TEXT("Shoulders"));
+	case EPresetCategory::LeftBracer:  return FName(TEXT("LeftBracer"));
+	case EPresetCategory::RightBracer: return FName(TEXT("RightBracer"));
+	default:                           return NAME_None;
 	}
 }
 

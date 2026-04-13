@@ -60,6 +60,27 @@ ATainlordPreviewCharacter::ATainlordPreviewCharacter()
 	BeardMesh->bUseAttachParentBound = true;
 	BeardMesh->SetBoundsScale(4.0f);
 
+	// Shoulders: separate skeletal mesh, attached to body, follows body skeleton via leader pose (accessory).
+	ShouldersMesh = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("ShouldersMesh"));
+	ShouldersMesh->SetupAttachment(GetMesh());
+	ShouldersMesh->SetLeaderPoseComponent(GetMesh());
+	ShouldersMesh->bUseAttachParentBound = true;
+	ShouldersMesh->SetBoundsScale(4.0f);
+
+	// Left bracer: separate skeletal mesh, attached to body, follows body skeleton via leader pose (accessory).
+	LeftBracerMesh = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("LeftBracerMesh"));
+	LeftBracerMesh->SetupAttachment(GetMesh());
+	LeftBracerMesh->SetLeaderPoseComponent(GetMesh());
+	LeftBracerMesh->bUseAttachParentBound = true;
+	LeftBracerMesh->SetBoundsScale(4.0f);
+
+	// Right bracer: separate skeletal mesh, attached to body, follows body skeleton via leader pose (accessory).
+	RightBracerMesh = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("RightBracerMesh"));
+	RightBracerMesh->SetupAttachment(GetMesh());
+	RightBracerMesh->SetLeaderPoseComponent(GetMesh());
+	RightBracerMesh->bUseAttachParentBound = true;
+	RightBracerMesh->SetBoundsScale(4.0f);
+
 	// Eyes: two separate static mesh components attached to HeadMesh via sockets.
 	// Each head mesh must define "Eye_L" and "Eye_R" sockets at the correct positions.
 	// The eye components are initially attached to HeadMesh; ApplyHead() will
@@ -89,6 +110,9 @@ ATainlordPreviewCharacter::ATainlordPreviewCharacter()
 	AppearanceComponent->BeardMeshComponent = BeardMesh;
 	AppearanceComponent->LeftEyeMeshComponent = LeftEyeMesh;
 	AppearanceComponent->RightEyeMeshComponent = RightEyeMesh;
+	AppearanceComponent->ShouldersMeshComponent = ShouldersMesh;
+	AppearanceComponent->LeftBracerMeshComponent = LeftBracerMesh;
+	AppearanceComponent->RightBracerMeshComponent = RightBracerMesh;
 }
 
 void ATainlordPreviewCharacter::BeginPlay()
@@ -188,13 +212,18 @@ void ATainlordPreviewCharacter::BeginPlay()
 	if (BeardMesh) { BeardMesh->SetVisibility(true); }
 	if (LeftEyeMesh) { LeftEyeMesh->SetVisibility(true); }
 	if (RightEyeMesh) { RightEyeMesh->SetVisibility(true); }
+	// Accessories start hidden — visibility is set by ApplyShoulders/ApplyLeftBracer/ApplyRightBracer
+	// when a valid catalog entry is applied. No forced visibility here.
 
 	UE_LOG(LogTemp, Log, TEXT("TainlordPreviewCharacter: BeginPlay complete. "
-		"Components: Body=%s, Head=%s, Arms=%s, Legs=%s, Hair=%s, Beard=%s"),
+		"Components: Body=%s, Head=%s, Arms=%s, Legs=%s, Hair=%s, Beard=%s, Shoulders=%s, BracerL=%s, BracerR=%s"),
 		GetMesh() ? TEXT("OK") : TEXT("null"),
 		HeadMesh ? TEXT("OK") : TEXT("null"),
 		ArmsMesh ? TEXT("OK") : TEXT("null"),
 		LegsMesh ? TEXT("OK") : TEXT("null"),
 		HairMesh ? TEXT("OK") : TEXT("null"),
-		BeardMesh ? TEXT("OK") : TEXT("null"));
+		BeardMesh ? TEXT("OK") : TEXT("null"),
+		ShouldersMesh ? TEXT("OK") : TEXT("null"),
+		LeftBracerMesh ? TEXT("OK") : TEXT("null"),
+		RightBracerMesh ? TEXT("OK") : TEXT("null"));
 }

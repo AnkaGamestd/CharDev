@@ -11,6 +11,9 @@
 
 class UTainlordCharacterAppearanceComponent;
 
+// Forward declare KingdawnCombat mastery types (minimal header touch)
+struct FKDMasteryIdentity;
+
 /**
  * Static helper library for spawn-time profile → appearance application.
  *
@@ -22,6 +25,10 @@ class UTainlordCharacterAppearanceComponent;
  *   Creation UI Preview → ApplyProfileToCharacter() → component.ApplyAppearanceWithContext()
  *
  * Per Arch.md: There must NOT be a separate preview-only appearance system.
+ *
+ * Mastery bridge (v1):
+ *   ApplyProfileToCharacter() now also applies mastery selection to combat characters.
+ *   SelectedMasteryId → FKDMasteryIdentity → character's mastery component.
  */
 UCLASS()
 class TAINLORD_API UTainlordCharacterSpawnLibrary : public UBlueprintFunctionLibrary
@@ -45,9 +52,14 @@ public:
 	 * Used by both spawn path and creation preview.
 	 * This is the single authoritative apply point.
 	 *
+	 * V1 Mastery Bridge: Also applies SelectedMasteryId to combat characters.
+	 * - Maps mastery ID to FKDMasteryIdentity via TainlordCombatRuleLibrary
+	 * - Sets mastery identity on KDCombatCharacter if present
+	 * - Logs warnings if mastery ID is invalid or character has no combat component
+	 *
 	 * @param Character The character to apply appearance to. Must have a UTainlordCharacterAppearanceComponent.
 	 * @param ProfileData The profile data to apply.
-	 * @return True if appearance was applied successfully.
+	 * @return True if appearance was applied successfully. Mastery application is best-effort.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Customization|Spawn")
 	static bool ApplyProfileToCharacter(AActor* Character, const FTainlordProfileData& ProfileData);
@@ -60,4 +72,14 @@ public:
 	 */
 	UFUNCTION(BlueprintPure, Category = "Customization|Spawn")
 	static UTainlordCharacterAppearanceComponent* GetAppearanceComponent(AActor* Character);
+
+private:
+	/**
+	 * Apply mastery selection from profile to a combat character.
+	 * This is a v1 pragmatic bridge - code-based mapping with safe fallbacks.
+	 *
+	 * @param Character The character to apply mastery to.
+	 * @param MasteryId The mastery ID from FTainlordProfileData.SelectedMasteryId.
+	 */
+	static void ApplyMasteryToCharacter(AActor* Character, FName MasteryId);
 };

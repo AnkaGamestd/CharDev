@@ -24,7 +24,10 @@ enum class EPresetCategory : uint8
 	Head UMETA(DisplayName = "Head"),
 	Hair UMETA(DisplayName = "Hair"),
 	Beard UMETA(DisplayName = "Beard"),
-	SkinTone UMETA(DisplayName = "Skin Tone")
+	SkinTone UMETA(DisplayName = "Skin Tone"),
+	Shoulders UMETA(DisplayName = "Shoulders"),
+	LeftBracer UMETA(DisplayName = "Left Bracer"),
+	RightBracer UMETA(DisplayName = "Right Bracer")
 };
 
 /**

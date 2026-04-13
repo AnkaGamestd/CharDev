@@ -143,6 +143,18 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Customization|Catalog")
 	bool GetLegsEntry(FName LegsId, FTainlordLegsEntry& OutEntry) const;
 
+	/** Get a shoulders entry by stable ID. Returns true if found. */
+	UFUNCTION(BlueprintCallable, Category = "Customization|Catalog")
+	bool GetShouldersEntry(FName ShouldersId, FTainlordShouldersEntry& OutEntry) const;
+
+	/** Get a left bracer entry by stable ID. Returns true if found. */
+	UFUNCTION(BlueprintCallable, Category = "Customization|Catalog")
+	bool GetBracersLeftEntry(FName LeftBracerId, FTainlordBracerEntry& OutEntry) const;
+
+	/** Get a right bracer entry by stable ID. Returns true if found. */
+	UFUNCTION(BlueprintCallable, Category = "Customization|Catalog")
+	bool GetBracersRightEntry(FName RightBracerId, FTainlordBracerEntry& OutEntry) const;
+
 	// --- Filtered lookup helpers ---
 
 	/** Get all head entries allowed for the given gender and race. */
@@ -168,6 +180,18 @@ public:
 	/** Get all legs entries allowed for the given gender and race. */
 	UFUNCTION(BlueprintCallable, Category = "Customization|Catalog")
 	TArray<FTainlordLegsEntry> GetFilteredLegs(ECharacterGender Gender, ECharacterRace Race) const;
+
+	/** Get all shoulders entries allowed for the given gender and race. */
+	UFUNCTION(BlueprintCallable, Category = "Customization|Catalog")
+	TArray<FTainlordShouldersEntry> GetFilteredShoulders(ECharacterGender Gender, ECharacterRace Race) const;
+
+	/** Get all left bracer entries allowed for the given gender and race. */
+	UFUNCTION(BlueprintCallable, Category = "Customization|Catalog")
+	TArray<FTainlordBracerEntry> GetFilteredBracersLeft(ECharacterGender Gender, ECharacterRace Race) const;
+
+	/** Get all right bracer entries allowed for the given gender and race. */
+	UFUNCTION(BlueprintCallable, Category = "Customization|Catalog")
+	TArray<FTainlordBracerEntry> GetFilteredBracersRight(ECharacterGender Gender, ECharacterRace Race) const;
 
 private:
 	/**
