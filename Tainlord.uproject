@@ -33,7 +33,7 @@
 		},
 		{
 			"Name": "BpGeneratorUltimate",
-			"Enabled": true,
+			"Enabled": false,
 			"MarketplaceURL": "com.epicgames.launcher://ue/Fab/product/8d776721-5da3-44ce-b7ef-be17a023be59"
 		},
 		{

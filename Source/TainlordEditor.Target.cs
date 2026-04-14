@@ -12,6 +12,7 @@ public class TainlordEditorTarget : TargetRules
 		IncludeOrderVersion = EngineIncludeOrderVersion.Unreal5_7;
 		ExtraModuleNames.Add("Tainlord");
 		ExtraModuleNames.Add("KingdawnCombat");
+		bUseUnityBuild = false;
 	}
 }
 
