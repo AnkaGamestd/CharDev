@@ -136,7 +136,19 @@ protected:
 	TObjectPtr<UButton> CategoryBeardButton;
 
 	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UButton> CategoryArmsButton;
+
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UButton> CategoryLegsButton;
+
+	UPROPERTY(meta = (BindWidgetOptional))
 	TObjectPtr<UButton> CategorySkinToneButton;
+
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UButton> CategoryShouldersButton;
+
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UButton> CategoryBracerButton;
 
 	UPROPERTY(meta = (BindWidgetOptional))
 	TObjectPtr<UPanelWidget> PresetGridContainer;
@@ -185,7 +197,11 @@ private:
 	UFUNCTION() void OnCategoryHeadClicked();
 	UFUNCTION() void OnCategoryHairClicked();
 	UFUNCTION() void OnCategoryBeardClicked();
+	UFUNCTION() void OnCategoryArmsClicked();
+	UFUNCTION() void OnCategoryLegsClicked();
 	UFUNCTION() void OnCategorySkinToneClicked();
+	UFUNCTION() void OnCategoryShouldersClicked();
+	UFUNCTION() void OnCategoryBracerClicked();
 	UFUNCTION() void OnNameChanged(const FText& NewText);
 	UFUNCTION() void OnNameCommitted(const FText& NewText, ETextCommit::Type CommitMethod);
 
