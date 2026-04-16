@@ -161,11 +161,15 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Customization|Appearance")
 	bool ApplyShoulders(FName ShouldersId);
 
-	/** Apply left bracer accessory from a stable ID. Validates against active profile context. */
+	/** Apply bracer to both arms from a single stable ID. This is the primary public API. */
+	UFUNCTION(BlueprintCallable, Category = "Customization|Appearance")
+	bool ApplyBracer(FName BracerId);
+
+	/** Apply left bracer accessory from a stable ID. Low-level — prefer ApplyBracer(). */
 	UFUNCTION(BlueprintCallable, Category = "Customization|Appearance")
 	bool ApplyLeftBracer(FName LeftBracerId);
 
-	/** Apply right bracer accessory from a stable ID. Validates against active profile context. */
+	/** Apply right bracer accessory from a stable ID. Low-level — prefer ApplyBracer(). */
 	UFUNCTION(BlueprintCallable, Category = "Customization|Appearance")
 	bool ApplyRightBracer(FName RightBracerId);
 

@@ -7,8 +7,10 @@
 #include "Components/StaticMeshComponent.h"
 #include "Materials/MaterialInterface.h"
 #include "Engine/StaticMesh.h"
+#include "Engine/SkeletalMesh.h"
 #include "Animation/AnimSequence.h"
 #include "Animation/AnimationAsset.h"
+#include "Engine/SkinnedAssetCommon.h"
 
 namespace
 {
@@ -227,3 +229,79 @@ void ATainlordPreviewCharacter::BeginPlay()
 		LeftBracerMesh ? TEXT("OK") : TEXT("null"),
 		RightBracerMesh ? TEXT("OK") : TEXT("null"));
 }
+
+#if WITH_EDITOR
+void ATainlordPreviewCharacter::OnConstruction(const FTransform& Transform)
+{
+	Super::OnConstruction(Transform);
+
+	// --- Editor Preview Leader Pose Rebind ---
+	// When a Blueprint is compiled or properties change in editor,
+	// the leader pose binding from the constructor may be lost.
+	// Re-establish it here to ensure modular meshes render in editor preview.
+	
+	USkeletalMeshComponent* BodyMesh = GetMesh();
+	if (!BodyMesh)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("TainlordPreviewCharacter::OnConstruction - Body mesh is null"));
+		return;
+	}
+
+	// Helper lambda to rebind a follower component to its leader
+	auto RebindFollower = [](USkeletalMeshComponent* Follower, USkeletalMeshComponent* Leader, const TCHAR* ComponentName)
+	{
+		if (!Follower)
+		{
+			return;
+		}
+
+		// Ensure attachment
+		if (Follower->GetAttachParent() != Leader)
+		{
+			Follower->AttachToComponent(Leader, FAttachmentTransformRules::KeepRelativeTransform);
+		}
+
+		// Set leader pose for animation following
+		if (Follower->GetSkeletalMeshAsset())
+		{
+			Follower->SetLeaderPoseComponent(Leader);
+			Follower->RefreshBoneTransforms();
+			Follower->UpdateBounds();
+			Follower->SetVisibility(true);
+			
+			UE_LOG(LogTemp, Log, TEXT("TainlordPreviewCharacter::OnConstruction - Rebound %s to leader, mesh=%s"),
+				ComponentName,
+				*Follower->GetSkeletalMeshAsset()->GetName());
+		}
+	};
+
+	// Rebind all modular components that follow the body
+	RebindFollower(HeadMesh, BodyMesh, TEXT("HeadMesh"));
+	RebindFollower(ArmsMesh, BodyMesh, TEXT("ArmsMesh"));
+	RebindFollower(LegsMesh, BodyMesh, TEXT("LegsMesh"));
+	RebindFollower(ShouldersMesh, BodyMesh, TEXT("ShouldersMesh"));
+	RebindFollower(LeftBracerMesh, BodyMesh, TEXT("LeftBracerMesh"));
+	RebindFollower(RightBracerMesh, BodyMesh, TEXT("RightBracerMesh"));
+
+	// Hair and beard follow the head mesh
+	if (HeadMesh && HeadMesh->GetSkeletalMeshAsset())
+	{
+		RebindFollower(HairMesh, HeadMesh, TEXT("HairMesh"));
+		RebindFollower(BeardMesh, HeadMesh, TEXT("BeardMesh"));
+	}
+
+	// Eyes attach to head sockets - ensure they have valid meshes
+	if (LeftEyeMesh)
+	{
+		LeftEyeMesh->AttachToComponent(HeadMesh, FAttachmentTransformRules::KeepRelativeTransform);
+		LeftEyeMesh->SetVisibility(true);
+	}
+	if (RightEyeMesh)
+	{
+		RightEyeMesh->AttachToComponent(HeadMesh, FAttachmentTransformRules::KeepRelativeTransform);
+		RightEyeMesh->SetVisibility(true);
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("TainlordPreviewCharacter::OnConstruction - Leader pose rebind complete"));
+}
+#endif

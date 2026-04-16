@@ -10,6 +10,8 @@
 #include "Materials/MaterialInterface.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "TimerManager.h"
+#include "Animation/Skeleton.h"
+#include "ReferenceSkeleton.h"
 
 namespace
 {
@@ -100,10 +102,13 @@ void UTainlordCharacterAppearanceComponent::ApplyAppearance(const FTainlordAppea
 
 	// Apply accessory slots
 	ApplyShoulders(AppearanceData.ShouldersId);
-	ApplyLeftBracer(AppearanceData.LeftBracerId);
-	ApplyRightBracer(AppearanceData.RightBracerId);
+	// Unified bracer: use BracerId, fallback to legacy fields if migration hasn't run
+	FName EffectiveBracerId = AppearanceData.BracerId;
+	if (EffectiveBracerId.IsNone() && !AppearanceData.LeftBracerId.IsNone()) { EffectiveBracerId = AppearanceData.LeftBracerId; }
+	if (EffectiveBracerId.IsNone() && !AppearanceData.RightBracerId.IsNone()) { EffectiveBracerId = AppearanceData.RightBracerId; }
+	ApplyBracer(EffectiveBracerId);
 
-	UE_LOG(LogTemp, Log, TEXT("TainlordAppearance: ApplyAppearance complete (Head=%s, Hair=%s, Beard=%s, Arms=%s, Legs=%s, SkinTone=%s, Shoulders=%s, BracerL=%s, BracerR=%s, Context=Gender:%d Race:%d)"),
+	UE_LOG(LogTemp, Log, TEXT("TainlordAppearance: ApplyAppearance complete (Head=%s, Hair=%s, Beard=%s, Arms=%s, Legs=%s, SkinTone=%s, Shoulders=%s, Bracer=%s, Context=Gender:%d Race:%d)"),
 		*AppearanceData.HeadId.ToString(),
 		*AppearanceData.HairId.ToString(),
 		*AppearanceData.BeardId.ToString(),
@@ -111,8 +116,7 @@ void UTainlordCharacterAppearanceComponent::ApplyAppearance(const FTainlordAppea
 		*AppearanceData.LegsId.ToString(),
 		*AppearanceData.SkinToneId.ToString(),
 		*AppearanceData.ShouldersId.ToString(),
-		*AppearanceData.LeftBracerId.ToString(),
-		*AppearanceData.RightBracerId.ToString(),
+		*AppearanceData.BracerId.ToString(),
 		static_cast<int32>(ActiveGender),
 		static_cast<int32>(ActiveRace));
 }
@@ -732,6 +736,17 @@ bool UTainlordCharacterAppearanceComponent::ApplyShoulders(FName ShouldersId)
 	return true;
 }
 
+bool UTainlordCharacterAppearanceComponent::ApplyBracer(FName BracerId)
+{
+	CurrentAppearance.BracerId = BracerId;
+	// Apply same bracer to both arms
+	bool bLeftOk = ApplyLeftBracer(BracerId);
+	bool bRightOk = ApplyRightBracer(BracerId);
+	UE_LOG(LogTemp, Log, TEXT("TainlordAppearance: ApplyBracer('%s') → Left=%s, Right=%s"),
+		*BracerId.ToString(), bLeftOk ? TEXT("OK") : TEXT("FAIL"), bRightOk ? TEXT("OK") : TEXT("FAIL"));
+	return bLeftOk && bRightOk;
+}
+
 bool UTainlordCharacterAppearanceComponent::ApplyLeftBracer(FName LeftBracerId)
 {
 	CurrentAppearance.LeftBracerId = LeftBracerId;
@@ -1026,6 +1041,79 @@ void UTainlordCharacterAppearanceComponent::CollectSkinToneMaterials()
 // Leader pose rebind
 // ---------------------------------------------------------------------------
 
+namespace
+{
+	/**
+	 * Check if two skeletal meshes have compatible skeletons for leader pose.
+	 * Logs detailed mismatch information for debugging.
+	 */
+	bool CheckSkeletonCompatibility(const USkeletalMesh* FollowerMesh, const USkeletalMesh* LeaderMesh, const TCHAR* FollowerName)
+	{
+		if (!FollowerMesh || !LeaderMesh)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("SkeletonCheck: %s - null mesh (follower=%s, leader=%s)"),
+				FollowerName,
+				FollowerMesh ? *FollowerMesh->GetName() : TEXT("null"),
+				LeaderMesh ? *LeaderMesh->GetName() : TEXT("null"));
+			return false;
+		}
+
+		const USkeleton* FollowerSkeleton = FollowerMesh->GetSkeleton();
+		const USkeleton* LeaderSkeleton = LeaderMesh->GetSkeleton();
+
+		if (!FollowerSkeleton || !LeaderSkeleton)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("SkeletonCheck: %s - null skeleton (follower=%s, leader=%s)"),
+				FollowerName,
+				FollowerSkeleton ? *FollowerSkeleton->GetName() : TEXT("null"),
+				LeaderSkeleton ? *LeaderSkeleton->GetName() : TEXT("null"));
+			return false;
+		}
+
+		// Same skeleton reference is always compatible
+		if (FollowerSkeleton == LeaderSkeleton)
+		{
+			return true;
+		}
+
+		// Check if the follower skeleton is a subset of the leader skeleton
+		// by verifying that all required bones exist in the leader
+		const FReferenceSkeleton& FollowerRefSkeleton = FollowerSkeleton->GetReferenceSkeleton();
+		const FReferenceSkeleton& LeaderRefSkeleton = LeaderSkeleton->GetReferenceSkeleton();
+
+		int32 MissingBones = 0;
+		for (int32 i = 0; i < FollowerRefSkeleton.GetNum(); ++i)
+		{
+			const FName BoneName = FollowerRefSkeleton.GetBoneName(i);
+			if (LeaderRefSkeleton.FindBoneIndex(BoneName) == INDEX_NONE)
+			{
+				++MissingBones;
+				// Only log first few missing bones to avoid spam
+				if (MissingBones <= 3)
+				{
+					UE_LOG(LogTemp, Warning, TEXT("SkeletonCheck: %s - bone '%s' not found in leader skeleton"),
+						FollowerName, *BoneName.ToString());
+				}
+			}
+		}
+
+		if (MissingBones > 0)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("SkeletonCheck: %s - %d bones missing from leader skeleton (follower=%s, leader=%s)"),
+				FollowerName, MissingBones,
+				*FollowerSkeleton->GetName(),
+				*LeaderSkeleton->GetName());
+			return false;
+		}
+
+		UE_LOG(LogTemp, Log, TEXT("SkeletonCheck: %s - compatible (follower=%s, leader=%s)"),
+			FollowerName,
+			*FollowerSkeleton->GetName(),
+			*LeaderSkeleton->GetName());
+		return true;
+	}
+}
+
 void UTainlordCharacterAppearanceComponent::RebindLeaderPose()
 {
 	// Body is the leader for head, arms, legs, and accessories.
@@ -1036,97 +1124,80 @@ void UTainlordCharacterAppearanceComponent::RebindLeaderPose()
 		return;
 	}
 
-	int32 RebindCount = 0;
+	USkeletalMesh* BodyMeshAsset = BodyMeshComponent->GetSkeletalMeshAsset();
+	if (!BodyMeshAsset)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("TainlordAppearance::RebindLeaderPose - Body mesh has no skeletal mesh asset"));
+		return;
+	}
 
+	int32 RebindCount = 0;
+	int32 SkipCount = 0;
+
+	// Helper lambda to rebind a single component with full diagnostics
+	auto RebindComponent = [&](USkeletalMeshComponent* Follower, USkeletalMeshComponent* Leader, const TCHAR* ComponentName)
+	{
+		if (!Follower)
+		{
+			return;
+		}
+
+		USkeletalMesh* FollowerMeshAsset = Follower->GetSkeletalMeshAsset();
+		if (!FollowerMeshAsset)
+		{
+			UE_LOG(LogTemp, Log, TEXT("RebindLeaderPose: %s - no mesh asset assigned, skipping"), ComponentName);
+			++SkipCount;
+			return;
+		}
+
+		// Check skeleton compatibility
+		if (!CheckSkeletonCompatibility(FollowerMeshAsset, Leader->GetSkeletalMeshAsset(), ComponentName))
+		{
+			UE_LOG(LogTemp, Warning, TEXT("RebindLeaderPose: %s - skeleton mismatch! Follower mesh '%s' may not follow leader correctly"),
+				ComponentName, *FollowerMeshAsset->GetName());
+			// Continue anyway - UE will handle gracefully, but this is a configuration issue
+		}
+
+		// Ensure attachment
+		if (Follower->GetAttachParent() != Leader)
+		{
+			Follower->AttachToComponent(Leader, FAttachmentTransformRules::KeepRelativeTransform);
+		}
+
+		// Set leader pose
+		Follower->SetLeaderPoseComponent(Leader);
+		Follower->RefreshBoneTransforms();
+		Follower->UpdateBounds();
+		Follower->SetVisibility(true);
+
+		++RebindCount;
+		UE_LOG(LogTemp, Log, TEXT("RebindLeaderPose: %s - rebound to leader (mesh=%s)"),
+			ComponentName, *FollowerMeshAsset->GetName());
+	};
+
+	// Rebind all modular components that follow the body
+	RebindComponent(HeadMeshComponent, BodyMeshComponent, TEXT("HeadMesh"));
+	RebindComponent(ArmsMeshComponent, BodyMeshComponent, TEXT("ArmsMesh"));
+	RebindComponent(LegsMeshComponent, BodyMeshComponent, TEXT("LegsMesh"));
+	RebindComponent(ShouldersMeshComponent, BodyMeshComponent, TEXT("ShouldersMesh"));
+	RebindComponent(LeftBracerMeshComponent, BodyMeshComponent, TEXT("LeftBracerMesh"));
+	RebindComponent(RightBracerMeshComponent, BodyMeshComponent, TEXT("RightBracerMesh"));
+
+	// Hair and beard follow the head mesh
 	if (HeadMeshComponent && HeadMeshComponent->GetSkeletalMeshAsset())
 	{
-		if (HeadMeshComponent->GetAttachParent() != BodyMeshComponent)
-		{
-			HeadMeshComponent->AttachToComponent(BodyMeshComponent, FAttachmentTransformRules::KeepRelativeTransform);
-		}
-		HeadMeshComponent->SetLeaderPoseComponent(BodyMeshComponent);
-		HeadMeshComponent->SetVisibility(true);
-		++RebindCount;
+		RebindComponent(HairMeshComponent, HeadMeshComponent, TEXT("HairMesh"));
+		RebindComponent(BeardMeshComponent, HeadMeshComponent, TEXT("BeardMesh"));
 	}
-
-	if (ArmsMeshComponent && ArmsMeshComponent->GetSkeletalMeshAsset())
+	else
 	{
-		if (ArmsMeshComponent->GetAttachParent() != BodyMeshComponent)
-		{
-			ArmsMeshComponent->AttachToComponent(BodyMeshComponent, FAttachmentTransformRules::KeepRelativeTransform);
-		}
-		ArmsMeshComponent->SetLeaderPoseComponent(BodyMeshComponent);
-		ArmsMeshComponent->SetVisibility(true);
-		++RebindCount;
+		// Head not assigned, skip hair/beard
+		if (HairMeshComponent) { ++SkipCount; }
+		if (BeardMeshComponent) { ++SkipCount; }
 	}
 
-	if (LegsMeshComponent && LegsMeshComponent->GetSkeletalMeshAsset())
-	{
-		if (LegsMeshComponent->GetAttachParent() != BodyMeshComponent)
-		{
-			LegsMeshComponent->AttachToComponent(BodyMeshComponent, FAttachmentTransformRules::KeepRelativeTransform);
-		}
-		LegsMeshComponent->SetLeaderPoseComponent(BodyMeshComponent);
-		LegsMeshComponent->SetVisibility(true);
-		++RebindCount;
-	}
-
-	if (HairMeshComponent && HeadMeshComponent)
-	{
-		if (HairMeshComponent->GetAttachParent() != HeadMeshComponent)
-		{
-			HairMeshComponent->AttachToComponent(HeadMeshComponent, FAttachmentTransformRules::KeepRelativeTransform);
-		}
-		HairMeshComponent->SetLeaderPoseComponent(HeadMeshComponent);
-		HairMeshComponent->SetVisibility(true);
-		++RebindCount;
-	}
-
-	if (BeardMeshComponent && HeadMeshComponent)
-	{
-		if (BeardMeshComponent->GetAttachParent() != HeadMeshComponent)
-		{
-			BeardMeshComponent->AttachToComponent(HeadMeshComponent, FAttachmentTransformRules::KeepRelativeTransform);
-		}
-		BeardMeshComponent->SetLeaderPoseComponent(HeadMeshComponent);
-		BeardMeshComponent->SetVisibility(true);
-		++RebindCount;
-	}
-
-	if (ShouldersMeshComponent && ShouldersMeshComponent->GetSkeletalMeshAsset())
-	{
-		if (ShouldersMeshComponent->GetAttachParent() != BodyMeshComponent)
-		{
-			ShouldersMeshComponent->AttachToComponent(BodyMeshComponent, FAttachmentTransformRules::KeepRelativeTransform);
-		}
-		ShouldersMeshComponent->SetLeaderPoseComponent(BodyMeshComponent);
-		ShouldersMeshComponent->SetVisibility(true);
-		++RebindCount;
-	}
-
-	if (LeftBracerMeshComponent && LeftBracerMeshComponent->GetSkeletalMeshAsset())
-	{
-		if (LeftBracerMeshComponent->GetAttachParent() != BodyMeshComponent)
-		{
-			LeftBracerMeshComponent->AttachToComponent(BodyMeshComponent, FAttachmentTransformRules::KeepRelativeTransform);
-		}
-		LeftBracerMeshComponent->SetLeaderPoseComponent(BodyMeshComponent);
-		LeftBracerMeshComponent->SetVisibility(true);
-		++RebindCount;
-	}
-
-	if (RightBracerMeshComponent && RightBracerMeshComponent->GetSkeletalMeshAsset())
-	{
-		if (RightBracerMeshComponent->GetAttachParent() != BodyMeshComponent)
-		{
-			RightBracerMeshComponent->AttachToComponent(BodyMeshComponent, FAttachmentTransformRules::KeepRelativeTransform);
-		}
-		RightBracerMeshComponent->SetLeaderPoseComponent(BodyMeshComponent);
-		RightBracerMeshComponent->SetVisibility(true);
-		++RebindCount;
-	}
-
-	UE_LOG(LogTemp, Log, TEXT("TainlordAppearance::RebindLeaderPose - Rebound %d components to leader pose"), RebindCount);
+	UE_LOG(LogTemp, Log, TEXT("TainlordAppearance::RebindLeaderPose - Rebound %d components, skipped %d (no mesh)"),
+		RebindCount, SkipCount);
 }
 
 // ---------------------------------------------------------------------------

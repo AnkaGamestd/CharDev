@@ -127,4 +127,14 @@ public:
 
 protected:
 	virtual void BeginPlay() override;
+	
+#if WITH_EDITOR
+	/**
+	 * Editor-only construction script handler.
+	 * Rebinds leader pose for modular mesh components when the Blueprint
+	 * is compiled or when properties change in the editor.
+	 * This ensures modular meshes are visible in editor preview.
+	 */
+	virtual void OnConstruction(const FTransform& Transform) override;
+#endif
 };

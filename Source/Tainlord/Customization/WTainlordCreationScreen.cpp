@@ -146,9 +146,25 @@ void UWTainlordCreationScreen::NativeOnInitialized()
 	{
 		CategoryBeardButton = FindNamedWidgetFlexible<UButton>(this, TEXT("CategoryBeardButton"));
 	}
+	if (!CategoryArmsButton)
+	{
+		CategoryArmsButton = FindNamedWidgetFlexible<UButton>(this, TEXT("CategoryArmsButton"));
+	}
+	if (!CategoryLegsButton)
+	{
+		CategoryLegsButton = FindNamedWidgetFlexible<UButton>(this, TEXT("CategoryLegsButton"));
+	}
 	if (!CategorySkinToneButton)
 	{
 		CategorySkinToneButton = FindNamedWidgetFlexible<UButton>(this, TEXT("CategorySkinToneButton"));
+	}
+	if (!CategoryShouldersButton)
+	{
+		CategoryShouldersButton = FindNamedWidgetFlexible<UButton>(this, TEXT("CategoryShouldersButton"));
+	}
+	if (!CategoryBracerButton)
+	{
+		CategoryBracerButton = FindNamedWidgetFlexible<UButton>(this, TEXT("CategoryBracerButton"));
 	}
 	if (!PresetGridContainer)
 	{
@@ -215,9 +231,25 @@ void UWTainlordCreationScreen::NativeOnInitialized()
 	{
 		CategoryBeardButton->OnClicked.AddDynamic(this, &UWTainlordCreationScreen::OnCategoryBeardClicked);
 	}
+	if (CategoryArmsButton)
+	{
+		CategoryArmsButton->OnClicked.AddDynamic(this, &UWTainlordCreationScreen::OnCategoryArmsClicked);
+	}
+	if (CategoryLegsButton)
+	{
+		CategoryLegsButton->OnClicked.AddDynamic(this, &UWTainlordCreationScreen::OnCategoryLegsClicked);
+	}
 	if (CategorySkinToneButton)
 	{
 		CategorySkinToneButton->OnClicked.AddDynamic(this, &UWTainlordCreationScreen::OnCategorySkinToneClicked);
+	}
+	if (CategoryShouldersButton)
+	{
+		CategoryShouldersButton->OnClicked.AddDynamic(this, &UWTainlordCreationScreen::OnCategoryShouldersClicked);
+	}
+	if (CategoryBracerButton)
+	{
+		CategoryBracerButton->OnClicked.AddDynamic(this, &UWTainlordCreationScreen::OnCategoryBracerClicked);
 	}
 	if (ConfirmButton)
 	{
@@ -257,7 +289,11 @@ void UWTainlordCreationScreen::NativeConstruct()
 	SetButtonText(CategoryHeadButton, TEXT("Head"));
 	SetButtonText(CategoryHairButton, TEXT("Hair"));
 	SetButtonText(CategoryBeardButton, TEXT("Beard"));
+	SetButtonText(CategoryArmsButton, TEXT("Arms"));
+	SetButtonText(CategoryLegsButton, TEXT("Legs"));
 	SetButtonText(CategorySkinToneButton, TEXT("Skin Tone"));
+	SetButtonText(CategoryShouldersButton, TEXT("Shoulders"));
+	SetButtonText(CategoryBracerButton, TEXT("Bracer"));
 	SetButtonText(BackButton, TEXT("Back"));
 	SetButtonText(ConfirmButton, TEXT("Create Character"));
 
@@ -381,6 +417,10 @@ void UWTainlordCreationScreen::InitCreationScreen()
 		CharacterNameInput->SetText(FText::GetEmpty());
 	}
 
+	// Migrate legacy LeftBracerId/RightBracerId into unified BracerId
+	// so the first RefreshPresetGrid() sees the correct selected state.
+	WorkingProfile.AppearanceData.MigrateFromLegacy();
+
 	ActiveCategory = EPresetCategory::Head;
 	RefreshPresetGrid();
 	RefreshPreview();
@@ -439,16 +479,22 @@ void UWTainlordCreationScreen::SwitchCategory(EPresetCategory Category)
 
 void UWTainlordCreationScreen::OnConfirmClicked()
 {
-	FString Reason;
-	if (!UTainlordCharacterCreationLibrary::ConfirmCreation(this, WorkingProfile, Reason))
+	// Stage-aware validation: only check Appearance stage requirements (race/gender).
+	// Do NOT call ConfirmCreation() here — that runs full Confirm-stage validation
+	// which requires mastery/city/name and would block the Appearance → Mastery transition.
+	FProfileValidationResult Result = UTainlordCharacterCreationLibrary::ValidateProfileForStage(
+		WorkingProfile, ECreationStage::Appearance);
+
+	if (!Result.bIsValid)
 	{
-		SetValidationMessage(Reason, true);
-		BP_OnValidationResult(false, Reason);
+		SetValidationMessage(Result.Reason, true);
+		BP_OnValidationResult(false, Result.Reason);
 		return;
 	}
+
 	SetValidationMessage(TEXT(""), false);
 	BP_OnValidationResult(true, TEXT(""));
-	UE_LOG(LogTemp, Log, TEXT("WTainlordCreationScreen: Creation confirmed for '%s'"), *WorkingProfile.CharacterName);
+	UE_LOG(LogTemp, Log, TEXT("WTainlordCreationScreen: Appearance stage validated, advancing to next stage"));
 	OnCreationConfirmed.Broadcast();
 }
 
@@ -487,7 +533,11 @@ void UWTainlordCreationScreen::OnRaceOrcClicked() { SetRace(ECharacterRace::Orc)
 void UWTainlordCreationScreen::OnCategoryHeadClicked() { SwitchCategory(EPresetCategory::Head); }
 void UWTainlordCreationScreen::OnCategoryHairClicked() { SwitchCategory(EPresetCategory::Hair); }
 void UWTainlordCreationScreen::OnCategoryBeardClicked() { SwitchCategory(EPresetCategory::Beard); }
+void UWTainlordCreationScreen::OnCategoryArmsClicked() { SwitchCategory(EPresetCategory::Arms); }
+void UWTainlordCreationScreen::OnCategoryLegsClicked() { SwitchCategory(EPresetCategory::Legs); }
 void UWTainlordCreationScreen::OnCategorySkinToneClicked() { SwitchCategory(EPresetCategory::SkinTone); }
+void UWTainlordCreationScreen::OnCategoryShouldersClicked() { SwitchCategory(EPresetCategory::Shoulders); }
+void UWTainlordCreationScreen::OnCategoryBracerClicked() { SwitchCategory(EPresetCategory::Bracer); }
 
 void UWTainlordCreationScreen::OnNameChanged(const FText& NewText) { WorkingProfile.CharacterName = NewText.ToString(); }
 void UWTainlordCreationScreen::OnNameCommitted(const FText& NewText, ETextCommit::Type CommitMethod) { WorkingProfile.CharacterName = NewText.ToString(); }
@@ -508,12 +558,19 @@ void UWTainlordCreationScreen::OnPresetCardSelected(UWTainlordCreationPresetCard
 	const FName PresetId = Card->GetPresetId();
 	const EPresetCategory Category = Card->GetCategory();
 
+	UE_LOG(LogTemp, Log, TEXT("WTainlordCreationScreen: OnPresetCardSelected - Category=%d, Id='%s'"),
+		static_cast<int32>(Category), *PresetId.ToString());
+
 	switch (Category)
 	{
-	case EPresetCategory::Head:     WorkingProfile.AppearanceData.HeadId = PresetId; break;
-	case EPresetCategory::Hair:     WorkingProfile.AppearanceData.HairId = PresetId; break;
-	case EPresetCategory::Beard:    WorkingProfile.AppearanceData.BeardId = PresetId; break;
-	case EPresetCategory::SkinTone: WorkingProfile.AppearanceData.SkinToneId = PresetId; break;
+	case EPresetCategory::Head:        WorkingProfile.AppearanceData.HeadId = PresetId; break;
+	case EPresetCategory::Hair:        WorkingProfile.AppearanceData.HairId = PresetId; break;
+	case EPresetCategory::Beard:       WorkingProfile.AppearanceData.BeardId = PresetId; break;
+	case EPresetCategory::Arms:        WorkingProfile.AppearanceData.ArmsId = PresetId; break;
+	case EPresetCategory::Legs:        WorkingProfile.AppearanceData.LegsId = PresetId; break;
+	case EPresetCategory::SkinTone:    WorkingProfile.AppearanceData.SkinToneId = PresetId; break;
+	case EPresetCategory::Shoulders:   WorkingProfile.AppearanceData.ShouldersId = PresetId; break;
+	case EPresetCategory::Bracer:      WorkingProfile.AppearanceData.BracerId = PresetId; break;
 	}
 
 	RefreshPreviewSlot(Category, PresetId);
@@ -542,7 +599,7 @@ void UWTainlordCreationScreen::RefreshPresetGrid()
 		AddPresetCard(NAME_None, EPresetCategory::Hair, FText::FromString(TEXT("None")));
 		for (const FTainlordHairEntry& Entry : UTainlordCharacterCreationLibrary::GetAvailableHair(this, WorkingProfile.Gender, WorkingProfile.Race))
 		{
-			UE_LOG(LogTemp, Log, TEXT("  - Adding hair card: Id=%s"), *Entry.Id.ToString());
+			UE_LOG(LogTemp, Log, TEXT(" - Adding hair card: Id=%s"), *Entry.Id.ToString());
 			AddPresetCard(Entry.Id, EPresetCategory::Hair, FText::FromName(Entry.Id));
 		}
 		break;
@@ -551,9 +608,29 @@ void UWTainlordCreationScreen::RefreshPresetGrid()
 		for (const FTainlordBeardEntry& Entry : UTainlordCharacterCreationLibrary::GetAvailableBeards(this, WorkingProfile.Gender, WorkingProfile.Race))
 			AddPresetCard(Entry.Id, EPresetCategory::Beard, FText::FromName(Entry.Id));
 		break;
+	case EPresetCategory::Arms:
+		AddPresetCard(NAME_None, EPresetCategory::Arms, FText::FromString(TEXT("None")));
+		for (const FTainlordArmsEntry& Entry : UTainlordCharacterCreationLibrary::GetAvailableArms(this, WorkingProfile.Gender, WorkingProfile.Race))
+			AddPresetCard(Entry.Id, EPresetCategory::Arms, FText::FromName(Entry.Id));
+		break;
+	case EPresetCategory::Legs:
+		AddPresetCard(NAME_None, EPresetCategory::Legs, FText::FromString(TEXT("None")));
+		for (const FTainlordLegsEntry& Entry : UTainlordCharacterCreationLibrary::GetAvailableLegs(this, WorkingProfile.Gender, WorkingProfile.Race))
+			AddPresetCard(Entry.Id, EPresetCategory::Legs, FText::FromName(Entry.Id));
+		break;
 	case EPresetCategory::SkinTone:
 		for (const FTainlordSkinToneEntry& Entry : UTainlordCharacterCreationLibrary::GetAvailableSkinTones(this))
 			AddSkinToneCard(Entry.Id, FText::FromName(Entry.Id), Entry.Color);
+		break;
+	case EPresetCategory::Shoulders:
+		AddPresetCard(NAME_None, EPresetCategory::Shoulders, FText::FromString(TEXT("None")));
+		for (const FTainlordShouldersEntry& Entry : UTainlordCharacterCreationLibrary::GetAvailableShoulders(this, WorkingProfile.Gender, WorkingProfile.Race))
+			AddPresetCard(Entry.Id, EPresetCategory::Shoulders, FText::FromName(Entry.Id));
+		break;
+	case EPresetCategory::Bracer:
+		AddPresetCard(NAME_None, EPresetCategory::Bracer, FText::FromString(TEXT("None")));
+		for (const FTainlordBracerEntry& Entry : UTainlordCharacterCreationLibrary::GetAvailableBracers(this, WorkingProfile.Gender, WorkingProfile.Race))
+			AddPresetCard(Entry.Id, EPresetCategory::Bracer, FText::FromName(Entry.Id));
 		break;
 	}
 
@@ -561,7 +638,12 @@ void UWTainlordCreationScreen::RefreshPresetGrid()
 		(ActiveCategory == EPresetCategory::Head) ? WorkingProfile.AppearanceData.HeadId :
 		(ActiveCategory == EPresetCategory::Hair) ? WorkingProfile.AppearanceData.HairId :
 		(ActiveCategory == EPresetCategory::Beard) ? WorkingProfile.AppearanceData.BeardId :
-		WorkingProfile.AppearanceData.SkinToneId;
+		(ActiveCategory == EPresetCategory::Arms) ? WorkingProfile.AppearanceData.ArmsId :
+		(ActiveCategory == EPresetCategory::Legs) ? WorkingProfile.AppearanceData.LegsId :
+		(ActiveCategory == EPresetCategory::SkinTone) ? WorkingProfile.AppearanceData.SkinToneId :
+		(ActiveCategory == EPresetCategory::Shoulders) ? WorkingProfile.AppearanceData.ShouldersId :
+		(ActiveCategory == EPresetCategory::Bracer) ? WorkingProfile.AppearanceData.BracerId :
+		NAME_None;
 
 	for (UWTainlordCreationPresetCard* Card : PresetCards)
 	{
@@ -602,10 +684,11 @@ FName UWTainlordCreationScreen::CategoryToSlotName(EPresetCategory Category)
 	case EPresetCategory::Head:        return FName(TEXT("Head"));
 	case EPresetCategory::Hair:        return FName(TEXT("Hair"));
 	case EPresetCategory::Beard:       return FName(TEXT("Beard"));
+	case EPresetCategory::Arms:        return FName(TEXT("Arms"));
+	case EPresetCategory::Legs:        return FName(TEXT("Legs"));
 	case EPresetCategory::SkinTone:    return FName(TEXT("SkinTone"));
 	case EPresetCategory::Shoulders:   return FName(TEXT("Shoulders"));
-	case EPresetCategory::LeftBracer:  return FName(TEXT("LeftBracer"));
-	case EPresetCategory::RightBracer: return FName(TEXT("RightBracer"));
+	case EPresetCategory::Bracer:      return FName(TEXT("Bracer"));
 	default:                           return NAME_None;
 	}
 }
