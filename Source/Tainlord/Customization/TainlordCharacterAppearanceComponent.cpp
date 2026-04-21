@@ -15,6 +15,8 @@
 
 namespace
 {
+	static const TCHAR* CanonicalMaleBodyMeshPath = TEXT("/Game/ModularPrep/Male01/Body.Body");
+
 	float GetForwardExtentX(const USkeletalMesh* Mesh)
 	{
 		if (!Mesh)
@@ -24,6 +26,68 @@ namespace
 
 		const FBoxSphereBounds Bounds = Mesh->GetBounds();
 		return Bounds.Origin.X + Bounds.BoxExtent.X;
+	}
+
+	bool CheckSkeletonCompatibility(const USkeletalMesh* FollowerMesh, const USkeletalMesh* LeaderMesh, const TCHAR* FollowerName)
+	{
+		if (!FollowerMesh || !LeaderMesh)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("SkeletonCheck: %s - null mesh (follower=%s, leader=%s)"),
+				FollowerName,
+				FollowerMesh ? *FollowerMesh->GetName() : TEXT("null"),
+				LeaderMesh ? *LeaderMesh->GetName() : TEXT("null"));
+			return false;
+		}
+
+		const USkeleton* FollowerSkeleton = FollowerMesh->GetSkeleton();
+		const USkeleton* LeaderSkeleton = LeaderMesh->GetSkeleton();
+
+		if (!FollowerSkeleton || !LeaderSkeleton)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("SkeletonCheck: %s - null skeleton (follower=%s, leader=%s)"),
+				FollowerName,
+				FollowerSkeleton ? *FollowerSkeleton->GetName() : TEXT("null"),
+				LeaderSkeleton ? *LeaderSkeleton->GetName() : TEXT("null"));
+			return false;
+		}
+
+		if (FollowerSkeleton == LeaderSkeleton)
+		{
+			return true;
+		}
+
+		const FReferenceSkeleton& FollowerRefSkeleton = FollowerSkeleton->GetReferenceSkeleton();
+		const FReferenceSkeleton& LeaderRefSkeleton = LeaderSkeleton->GetReferenceSkeleton();
+
+		int32 MissingBones = 0;
+		for (int32 i = 0; i < FollowerRefSkeleton.GetNum(); ++i)
+		{
+			const FName BoneName = FollowerRefSkeleton.GetBoneName(i);
+			if (LeaderRefSkeleton.FindBoneIndex(BoneName) == INDEX_NONE)
+			{
+				++MissingBones;
+				if (MissingBones <= 3)
+				{
+					UE_LOG(LogTemp, Warning, TEXT("SkeletonCheck: %s - bone '%s' not found in leader skeleton"),
+						FollowerName, *BoneName.ToString());
+				}
+			}
+		}
+
+		if (MissingBones > 0)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("SkeletonCheck: %s - %d bones missing from leader skeleton (follower=%s, leader=%s)"),
+				FollowerName, MissingBones,
+				*FollowerSkeleton->GetName(),
+				*LeaderSkeleton->GetName());
+			return false;
+		}
+
+		UE_LOG(LogTemp, Log, TEXT("SkeletonCheck: %s - compatible (follower=%s, leader=%s)"),
+			FollowerName,
+			*FollowerSkeleton->GetName(),
+			*LeaderSkeleton->GetName());
+		return true;
 	}
 }
 
@@ -39,6 +103,7 @@ void UTainlordCharacterAppearanceComponent::BeginPlay()
 
 	// Capture the blueprint-authored modular defaults once so preview/runtime refreshes
 	// can reliably restore them even if a later apply pass comes in with NAME_None.
+	DefaultBodyMeshAsset = BodyMeshComponent ? BodyMeshComponent->GetSkeletalMeshAsset() : nullptr;
 	DefaultHeadMeshAsset = HeadMeshComponent ? HeadMeshComponent->GetSkeletalMeshAsset() : nullptr;
 	DefaultArmsMeshAsset = ArmsMeshComponent ? ArmsMeshComponent->GetSkeletalMeshAsset() : nullptr;
 	DefaultLegsMeshAsset = LegsMeshComponent ? LegsMeshComponent->GetSkeletalMeshAsset() : nullptr;
@@ -52,6 +117,7 @@ void UTainlordCharacterAppearanceComponent::BeginPlay()
 	// Blueprint reinstancing, hot-reload, or mesh assignment changes.
 	// Re-establish the leader-follower relationships here to guarantee
 	// that Head/Arms/Legs follow the Body skeleton at runtime.
+	EnsureBodyLeaderMesh();
 	RebindLeaderPose();
 	EnsureEyeRenderAssets();
 
@@ -80,6 +146,39 @@ UTainlordCharacterCustomizationCatalog* UTainlordCharacterAppearanceComponent::E
 	return Catalog.LoadSynchronous();
 }
 
+bool UTainlordCharacterAppearanceComponent::EnsureBodyLeaderMesh()
+{
+	if (!BodyMeshComponent)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("TainlordAppearance: No BodyMeshComponent available for modular leader setup"));
+		return false;
+	}
+
+	if (BodyMeshComponent->GetSkeletalMeshAsset())
+	{
+		return true;
+	}
+
+	USkeletalMesh* FallbackBodyMesh = DefaultBodyMeshAsset;
+	if (!FallbackBodyMesh)
+	{
+		FallbackBodyMesh = LoadObject<USkeletalMesh>(nullptr, CanonicalMaleBodyMeshPath);
+	}
+
+	if (!FallbackBodyMesh)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("TainlordAppearance: Failed to resolve canonical body mesh fallback '%s'"), CanonicalMaleBodyMeshPath);
+		return false;
+	}
+
+	BodyMeshComponent->SetSkeletalMesh(FallbackBodyMesh);
+	BodyMeshComponent->SetVisibility(true);
+	BodyMeshComponent->RefreshBoneTransforms();
+	BodyMeshComponent->UpdateBounds();
+	UE_LOG(LogTemp, Warning, TEXT("TainlordAppearance: Body mesh was empty - applied canonical fallback '%s'"), *FallbackBodyMesh->GetName());
+	return true;
+}
+
 void UTainlordCharacterAppearanceComponent::SetProfileContext(ECharacterGender Gender, ECharacterRace Race)
 {
 	ActiveGender = Gender;
@@ -93,32 +192,43 @@ void UTainlordCharacterAppearanceComponent::ApplyAppearance(const FTainlordAppea
 	CurrentAppearance = AppearanceData;
 
 	// Apply each component with context validation. Individual functions log warnings on rejection.
-	ApplyHead(AppearanceData.HeadId);
-	ApplyHair(AppearanceData.HairId);
-	ApplyBeard(AppearanceData.BeardId);
-	ApplyArms(AppearanceData.ArmsId);
-	ApplyLegs(AppearanceData.LegsId);
-	ApplySkinTone(AppearanceData.SkinToneId);
+	const bool bHeadOk = ApplyHead(AppearanceData.HeadId);
+	const bool bHairOk = ApplyHair(AppearanceData.HairId);
+	const bool bBeardOk = ApplyBeard(AppearanceData.BeardId);
+	const bool bArmsOk = ApplyArms(AppearanceData.ArmsId);
+	const bool bLegsOk = ApplyLegs(AppearanceData.LegsId);
+	const bool bSkinToneOk = ApplySkinTone(AppearanceData.SkinToneId);
 
 	// Apply accessory slots
-	ApplyShoulders(AppearanceData.ShouldersId);
+	const bool bShouldersOk = ApplyShoulders(AppearanceData.ShouldersId);
 	// Unified bracer: use BracerId, fallback to legacy fields if migration hasn't run
 	FName EffectiveBracerId = AppearanceData.BracerId;
 	if (EffectiveBracerId.IsNone() && !AppearanceData.LeftBracerId.IsNone()) { EffectiveBracerId = AppearanceData.LeftBracerId; }
 	if (EffectiveBracerId.IsNone() && !AppearanceData.RightBracerId.IsNone()) { EffectiveBracerId = AppearanceData.RightBracerId; }
-	ApplyBracer(EffectiveBracerId);
+	const bool bBracerOk = ApplyBracer(EffectiveBracerId);
 
-	UE_LOG(LogTemp, Log, TEXT("TainlordAppearance: ApplyAppearance complete (Head=%s, Hair=%s, Beard=%s, Arms=%s, Legs=%s, SkinTone=%s, Shoulders=%s, Bracer=%s, Context=Gender:%d Race:%d)"),
-		*AppearanceData.HeadId.ToString(),
-		*AppearanceData.HairId.ToString(),
-		*AppearanceData.BeardId.ToString(),
-		*AppearanceData.ArmsId.ToString(),
-		*AppearanceData.LegsId.ToString(),
-		*AppearanceData.SkinToneId.ToString(),
-		*AppearanceData.ShouldersId.ToString(),
-		*AppearanceData.BracerId.ToString(),
-		static_cast<int32>(ActiveGender),
-		static_cast<int32>(ActiveRace));
+	const bool bAllOk = bHeadOk && bHairOk && bBeardOk && bArmsOk && bLegsOk && bSkinToneOk && bShouldersOk && bBracerOk;
+	if (bAllOk)
+	{
+		UE_LOG(LogTemp, Log, TEXT("TainlordAppearance: ApplyAppearance complete (Head=%s, Hair=%s, Beard=%s, Arms=%s, Legs=%s, SkinTone=%s, Shoulders=%s, Bracer=%s, Context=Gender:%d Race:%d)"),
+			*AppearanceData.HeadId.ToString(),
+			*AppearanceData.HairId.ToString(),
+			*AppearanceData.BeardId.ToString(),
+			*AppearanceData.ArmsId.ToString(),
+			*AppearanceData.LegsId.ToString(),
+			*AppearanceData.SkinToneId.ToString(),
+			*AppearanceData.ShouldersId.ToString(),
+			*AppearanceData.BracerId.ToString(),
+			static_cast<int32>(ActiveGender),
+			static_cast<int32>(ActiveRace));
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("TainlordAppearance: ApplyAppearance incomplete - Results[Head=%d Hair=%d Beard=%d Arms=%d Legs=%d SkinTone=%d Shoulders=%d Bracer=%d] Context=Gender:%d Race:%d"),
+			bHeadOk, bHairOk, bBeardOk, bArmsOk, bLegsOk, bSkinToneOk, bShouldersOk, bBracerOk,
+			static_cast<int32>(ActiveGender),
+			static_cast<int32>(ActiveRace));
+	}
 }
 
 void UTainlordCharacterAppearanceComponent::ApplyAppearanceWithContext(const FTainlordAppearanceData& AppearanceData, ECharacterGender Gender, ECharacterRace Race)
@@ -135,6 +245,11 @@ bool UTainlordCharacterAppearanceComponent::ApplyHead(FName HeadId)
 	{
 		if (HeadMeshComponent && DefaultHeadMeshAsset)
 		{
+			if (!EnsureBodyLeaderMesh())
+			{
+				UE_LOG(LogTemp, Warning, TEXT("TainlordAppearance: Cannot restore default head - body leader mesh is missing"));
+				return false;
+			}
 			// CRITICAL FIX: Do NOT reset CurrentHeadEntry for default head.
 			// The catalog entry for the default head (e.g., "Male01") must be
 			// resolved so that eye calibration offsets are applied correctly.
@@ -184,7 +299,10 @@ bool UTainlordCharacterAppearanceComponent::ApplyHead(FName HeadId)
 			HeadMeshComponent->SetRelativeScale3D(FVector::OneVector);
 			EnsureEyeRenderAssets();
 			AttachEyesToHeadSockets();
-			RebindLeaderPose();
+			if (!RebindLeaderPose())
+			{
+				return false;
+			}
 		}
 		return true;
 	}
@@ -221,6 +339,16 @@ bool UTainlordCharacterAppearanceComponent::ApplyHead(FName HeadId)
 	if (!LoadedMesh)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("TainlordAppearance: Failed to load head mesh for '%s'"), *HeadId.ToString());
+		return false;
+	}
+	if (!EnsureBodyLeaderMesh())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("TainlordAppearance: Cannot apply head '%s' - body leader mesh is missing"), *HeadId.ToString());
+		return false;
+	}
+	if (!CheckSkeletonCompatibility(LoadedMesh, BodyMeshComponent ? BodyMeshComponent->GetSkeletalMeshAsset() : nullptr, TEXT("HeadMesh")))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("TainlordAppearance: Head '%s' rejected - incompatible with body leader skeleton"), *HeadId.ToString());
 		return false;
 	}
 
@@ -281,7 +409,10 @@ bool UTainlordCharacterAppearanceComponent::ApplyHead(FName HeadId)
 
 	EnsureEyeRenderAssets();
 	AttachEyesToHeadSockets();
-	RebindLeaderPose();
+	if (!RebindLeaderPose())
+	{
+		return false;
+	}
 
 	return true;
 }
@@ -331,6 +462,16 @@ bool UTainlordCharacterAppearanceComponent::ApplyHair(FName HairId)
 	if (!LoadedMesh)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("TainlordAppearance: Failed to load hair mesh for '%s'"), *HairId.ToString());
+		return false;
+	}
+	if (!HeadMeshComponent || !HeadMeshComponent->GetSkeletalMeshAsset())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("TainlordAppearance: Cannot apply hair '%s' - head leader mesh is missing"), *HairId.ToString());
+		return false;
+	}
+	if (!CheckSkeletonCompatibility(LoadedMesh, HeadMeshComponent->GetSkeletalMeshAsset(), TEXT("HairMesh")))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("TainlordAppearance: Hair '%s' rejected - incompatible with head leader skeleton"), *HairId.ToString());
 		return false;
 	}
 
@@ -390,6 +531,16 @@ bool UTainlordCharacterAppearanceComponent::ApplyBeard(FName BeardId)
 		UE_LOG(LogTemp, Warning, TEXT("TainlordAppearance: Failed to load beard mesh for '%s'"), *BeardId.ToString());
 		return false;
 	}
+	if (!HeadMeshComponent || !HeadMeshComponent->GetSkeletalMeshAsset())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("TainlordAppearance: Cannot apply beard '%s' - head leader mesh is missing"), *BeardId.ToString());
+		return false;
+	}
+	if (!CheckSkeletonCompatibility(LoadedMesh, HeadMeshComponent->GetSkeletalMeshAsset(), TEXT("BeardMesh")))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("TainlordAppearance: Beard '%s' rejected - incompatible with head leader skeleton"), *BeardId.ToString());
+		return false;
+	}
 
 	BeardMeshComponent->SetSkeletalMesh(LoadedMesh);
 	
@@ -431,6 +582,11 @@ bool UTainlordCharacterAppearanceComponent::ApplyArms(FName ArmsId)
 	{
 		if (ArmsMeshComponent && DefaultArmsMeshAsset)
 		{
+			if (!EnsureBodyLeaderMesh())
+			{
+				UE_LOG(LogTemp, Warning, TEXT("TainlordAppearance: Cannot restore default arms - body leader mesh is missing"));
+				return false;
+			}
 			ArmsMeshComponent->SetSkeletalMesh(DefaultArmsMeshAsset);
 			ArmsMeshComponent->SetUsingAbsoluteLocation(false);
 			ArmsMeshComponent->SetUsingAbsoluteRotation(false);
@@ -443,7 +599,10 @@ bool UTainlordCharacterAppearanceComponent::ApplyArms(FName ArmsId)
 			ArmsMeshComponent->SetRelativeRotation(FRotator::ZeroRotator);
 			ArmsMeshComponent->SetRelativeScale3D(FVector::OneVector);
 			// Rebind leader pose after restoring default mesh.
-			RebindLeaderPose();
+			if (!RebindLeaderPose())
+			{
+				return false;
+			}
 			ArmsMeshComponent->RefreshBoneTransforms();
 			ArmsMeshComponent->UpdateBounds();
 			ArmsMeshComponent->SetVisibility(true);
@@ -484,6 +643,16 @@ bool UTainlordCharacterAppearanceComponent::ApplyArms(FName ArmsId)
 		UE_LOG(LogTemp, Warning, TEXT("TainlordAppearance: Failed to load arms mesh for '%s'"), *ArmsId.ToString());
 		return false;
 	}
+	if (!EnsureBodyLeaderMesh())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("TainlordAppearance: Cannot apply arms '%s' - body leader mesh is missing"), *ArmsId.ToString());
+		return false;
+	}
+	if (!CheckSkeletonCompatibility(LoadedMesh, BodyMeshComponent ? BodyMeshComponent->GetSkeletalMeshAsset() : nullptr, TEXT("ArmsMesh")))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("TainlordAppearance: Arms '%s' rejected - incompatible with body leader skeleton"), *ArmsId.ToString());
+		return false;
+	}
 
 	ArmsMeshComponent->SetSkeletalMesh(LoadedMesh);
 	ArmsMeshComponent->SetUsingAbsoluteLocation(false);
@@ -496,7 +665,10 @@ bool UTainlordCharacterAppearanceComponent::ApplyArms(FName ArmsId)
 	ArmsMeshComponent->SetRelativeLocation(FVector::ZeroVector);
 	ArmsMeshComponent->SetRelativeRotation(FRotator::ZeroRotator);
 	ArmsMeshComponent->SetRelativeScale3D(FVector::OneVector);
-	RebindLeaderPose();
+	if (!RebindLeaderPose())
+	{
+		return false;
+	}
 	ArmsMeshComponent->RefreshBoneTransforms();
 	ArmsMeshComponent->UpdateBounds();
 
@@ -515,6 +687,11 @@ bool UTainlordCharacterAppearanceComponent::ApplyLegs(FName LegsId)
 	{
 		if (LegsMeshComponent && DefaultLegsMeshAsset)
 		{
+			if (!EnsureBodyLeaderMesh())
+			{
+				UE_LOG(LogTemp, Warning, TEXT("TainlordAppearance: Cannot restore default legs - body leader mesh is missing"));
+				return false;
+			}
 			LegsMeshComponent->SetSkeletalMesh(DefaultLegsMeshAsset);
 			LegsMeshComponent->SetUsingAbsoluteLocation(false);
 			LegsMeshComponent->SetUsingAbsoluteRotation(false);
@@ -527,7 +704,10 @@ bool UTainlordCharacterAppearanceComponent::ApplyLegs(FName LegsId)
 			LegsMeshComponent->SetRelativeRotation(FRotator::ZeroRotator);
 			LegsMeshComponent->SetRelativeScale3D(FVector::OneVector);
 			// Rebind leader pose after restoring default mesh.
-			RebindLeaderPose();
+			if (!RebindLeaderPose())
+			{
+				return false;
+			}
 			LegsMeshComponent->RefreshBoneTransforms();
 			LegsMeshComponent->UpdateBounds();
 			LegsMeshComponent->SetVisibility(true);
@@ -568,6 +748,16 @@ bool UTainlordCharacterAppearanceComponent::ApplyLegs(FName LegsId)
 		UE_LOG(LogTemp, Warning, TEXT("TainlordAppearance: Failed to load legs mesh for '%s'"), *LegsId.ToString());
 		return false;
 	}
+	if (!EnsureBodyLeaderMesh())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("TainlordAppearance: Cannot apply legs '%s' - body leader mesh is missing"), *LegsId.ToString());
+		return false;
+	}
+	if (!CheckSkeletonCompatibility(LoadedMesh, BodyMeshComponent ? BodyMeshComponent->GetSkeletalMeshAsset() : nullptr, TEXT("LegsMesh")))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("TainlordAppearance: Legs '%s' rejected - incompatible with body leader skeleton"), *LegsId.ToString());
+		return false;
+	}
 
 	LegsMeshComponent->SetSkeletalMesh(LoadedMesh);
 	LegsMeshComponent->SetUsingAbsoluteLocation(false);
@@ -580,7 +770,10 @@ bool UTainlordCharacterAppearanceComponent::ApplyLegs(FName LegsId)
 	LegsMeshComponent->SetRelativeLocation(FVector::ZeroVector);
 	LegsMeshComponent->SetRelativeRotation(FRotator::ZeroRotator);
 	LegsMeshComponent->SetRelativeScale3D(FVector::OneVector);
-	RebindLeaderPose();
+	if (!RebindLeaderPose())
+	{
+		return false;
+	}
 	LegsMeshComponent->RefreshBoneTransforms();
 	LegsMeshComponent->UpdateBounds();
 
@@ -715,6 +908,16 @@ bool UTainlordCharacterAppearanceComponent::ApplyShoulders(FName ShouldersId)
 		UE_LOG(LogTemp, Warning, TEXT("TainlordAppearance: Failed to load shoulders mesh for '%s'"), *ShouldersId.ToString());
 		return false;
 	}
+	if (!EnsureBodyLeaderMesh())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("TainlordAppearance: Cannot apply shoulders '%s' - body leader mesh is missing"), *ShouldersId.ToString());
+		return false;
+	}
+	if (!CheckSkeletonCompatibility(LoadedMesh, BodyMeshComponent ? BodyMeshComponent->GetSkeletalMeshAsset() : nullptr, TEXT("ShouldersMesh")))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("TainlordAppearance: Shoulders '%s' rejected - incompatible with body leader skeleton"), *ShouldersId.ToString());
+		return false;
+	}
 
 	ShouldersMeshComponent->SetSkeletalMesh(LoadedMesh);
 	ShouldersMeshComponent->SetUsingAbsoluteLocation(false);
@@ -727,7 +930,10 @@ bool UTainlordCharacterAppearanceComponent::ApplyShoulders(FName ShouldersId)
 	ShouldersMeshComponent->SetRelativeLocation(Entry->RelativeLocation);
 	ShouldersMeshComponent->SetRelativeRotation(Entry->RelativeRotation);
 	ShouldersMeshComponent->SetRelativeScale3D(Entry->RelativeScale3D);
-	
+	if (!RebindLeaderPose())
+	{
+		return false;
+	}
 	ShouldersMeshComponent->RefreshBoneTransforms();
 	ShouldersMeshComponent->UpdateBounds();
 	ShouldersMeshComponent->SetVisibility(true);
@@ -794,6 +1000,16 @@ bool UTainlordCharacterAppearanceComponent::ApplyLeftBracer(FName LeftBracerId)
 		UE_LOG(LogTemp, Warning, TEXT("TainlordAppearance: Failed to load left bracer mesh for '%s'"), *LeftBracerId.ToString());
 		return false;
 	}
+	if (!EnsureBodyLeaderMesh())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("TainlordAppearance: Cannot apply left bracer '%s' - body leader mesh is missing"), *LeftBracerId.ToString());
+		return false;
+	}
+	if (!CheckSkeletonCompatibility(LoadedMesh, BodyMeshComponent ? BodyMeshComponent->GetSkeletalMeshAsset() : nullptr, TEXT("LeftBracerMesh")))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("TainlordAppearance: Left bracer '%s' rejected - incompatible with body leader skeleton"), *LeftBracerId.ToString());
+		return false;
+	}
 
 	LeftBracerMeshComponent->SetSkeletalMesh(LoadedMesh);
 	LeftBracerMeshComponent->SetUsingAbsoluteLocation(false);
@@ -806,7 +1022,10 @@ bool UTainlordCharacterAppearanceComponent::ApplyLeftBracer(FName LeftBracerId)
 	LeftBracerMeshComponent->SetRelativeLocation(Entry->RelativeLocation);
 	LeftBracerMeshComponent->SetRelativeRotation(Entry->RelativeRotation);
 	LeftBracerMeshComponent->SetRelativeScale3D(Entry->RelativeScale3D);
-	
+	if (!RebindLeaderPose())
+	{
+		return false;
+	}
 	LeftBracerMeshComponent->RefreshBoneTransforms();
 	LeftBracerMeshComponent->UpdateBounds();
 	LeftBracerMeshComponent->SetVisibility(true);
@@ -862,6 +1081,16 @@ bool UTainlordCharacterAppearanceComponent::ApplyRightBracer(FName RightBracerId
 		UE_LOG(LogTemp, Warning, TEXT("TainlordAppearance: Failed to load right bracer mesh for '%s'"), *RightBracerId.ToString());
 		return false;
 	}
+	if (!EnsureBodyLeaderMesh())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("TainlordAppearance: Cannot apply right bracer '%s' - body leader mesh is missing"), *RightBracerId.ToString());
+		return false;
+	}
+	if (!CheckSkeletonCompatibility(LoadedMesh, BodyMeshComponent ? BodyMeshComponent->GetSkeletalMeshAsset() : nullptr, TEXT("RightBracerMesh")))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("TainlordAppearance: Right bracer '%s' rejected - incompatible with body leader skeleton"), *RightBracerId.ToString());
+		return false;
+	}
 
 	RightBracerMeshComponent->SetSkeletalMesh(LoadedMesh);
 	RightBracerMeshComponent->SetUsingAbsoluteLocation(false);
@@ -874,7 +1103,10 @@ bool UTainlordCharacterAppearanceComponent::ApplyRightBracer(FName RightBracerId
 	RightBracerMeshComponent->SetRelativeLocation(Entry->RelativeLocation);
 	RightBracerMeshComponent->SetRelativeRotation(Entry->RelativeRotation);
 	RightBracerMeshComponent->SetRelativeScale3D(Entry->RelativeScale3D);
-	
+	if (!RebindLeaderPose())
+	{
+		return false;
+	}
 	RightBracerMeshComponent->RefreshBoneTransforms();
 	RightBracerMeshComponent->UpdateBounds();
 	RightBracerMeshComponent->SetVisibility(true);
@@ -1041,98 +1273,24 @@ void UTainlordCharacterAppearanceComponent::CollectSkinToneMaterials()
 // Leader pose rebind
 // ---------------------------------------------------------------------------
 
-namespace
-{
-	/**
-	 * Check if two skeletal meshes have compatible skeletons for leader pose.
-	 * Logs detailed mismatch information for debugging.
-	 */
-	bool CheckSkeletonCompatibility(const USkeletalMesh* FollowerMesh, const USkeletalMesh* LeaderMesh, const TCHAR* FollowerName)
-	{
-		if (!FollowerMesh || !LeaderMesh)
-		{
-			UE_LOG(LogTemp, Warning, TEXT("SkeletonCheck: %s - null mesh (follower=%s, leader=%s)"),
-				FollowerName,
-				FollowerMesh ? *FollowerMesh->GetName() : TEXT("null"),
-				LeaderMesh ? *LeaderMesh->GetName() : TEXT("null"));
-			return false;
-		}
-
-		const USkeleton* FollowerSkeleton = FollowerMesh->GetSkeleton();
-		const USkeleton* LeaderSkeleton = LeaderMesh->GetSkeleton();
-
-		if (!FollowerSkeleton || !LeaderSkeleton)
-		{
-			UE_LOG(LogTemp, Warning, TEXT("SkeletonCheck: %s - null skeleton (follower=%s, leader=%s)"),
-				FollowerName,
-				FollowerSkeleton ? *FollowerSkeleton->GetName() : TEXT("null"),
-				LeaderSkeleton ? *LeaderSkeleton->GetName() : TEXT("null"));
-			return false;
-		}
-
-		// Same skeleton reference is always compatible
-		if (FollowerSkeleton == LeaderSkeleton)
-		{
-			return true;
-		}
-
-		// Check if the follower skeleton is a subset of the leader skeleton
-		// by verifying that all required bones exist in the leader
-		const FReferenceSkeleton& FollowerRefSkeleton = FollowerSkeleton->GetReferenceSkeleton();
-		const FReferenceSkeleton& LeaderRefSkeleton = LeaderSkeleton->GetReferenceSkeleton();
-
-		int32 MissingBones = 0;
-		for (int32 i = 0; i < FollowerRefSkeleton.GetNum(); ++i)
-		{
-			const FName BoneName = FollowerRefSkeleton.GetBoneName(i);
-			if (LeaderRefSkeleton.FindBoneIndex(BoneName) == INDEX_NONE)
-			{
-				++MissingBones;
-				// Only log first few missing bones to avoid spam
-				if (MissingBones <= 3)
-				{
-					UE_LOG(LogTemp, Warning, TEXT("SkeletonCheck: %s - bone '%s' not found in leader skeleton"),
-						FollowerName, *BoneName.ToString());
-				}
-			}
-		}
-
-		if (MissingBones > 0)
-		{
-			UE_LOG(LogTemp, Warning, TEXT("SkeletonCheck: %s - %d bones missing from leader skeleton (follower=%s, leader=%s)"),
-				FollowerName, MissingBones,
-				*FollowerSkeleton->GetName(),
-				*LeaderSkeleton->GetName());
-			return false;
-		}
-
-		UE_LOG(LogTemp, Log, TEXT("SkeletonCheck: %s - compatible (follower=%s, leader=%s)"),
-			FollowerName,
-			*FollowerSkeleton->GetName(),
-			*LeaderSkeleton->GetName());
-		return true;
-	}
-}
-
-void UTainlordCharacterAppearanceComponent::RebindLeaderPose()
+bool UTainlordCharacterAppearanceComponent::RebindLeaderPose()
 {
 	// Body is the leader for head, arms, legs, and accessories.
 	// Hair and beard follow the head mesh.
 	if (!BodyMeshComponent)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("TainlordAppearance::RebindLeaderPose - BodyMeshComponent is null, cannot rebind"));
-		return;
+		return false;
 	}
 
-	USkeletalMesh* BodyMeshAsset = BodyMeshComponent->GetSkeletalMeshAsset();
-	if (!BodyMeshAsset)
+	if (!EnsureBodyLeaderMesh())
 	{
 		UE_LOG(LogTemp, Warning, TEXT("TainlordAppearance::RebindLeaderPose - Body mesh has no skeletal mesh asset"));
-		return;
+		return false;
 	}
-
 	int32 RebindCount = 0;
 	int32 SkipCount = 0;
+	bool bHadCompatibilityFailure = false;
 
 	// Helper lambda to rebind a single component with full diagnostics
 	auto RebindComponent = [&](USkeletalMeshComponent* Follower, USkeletalMeshComponent* Leader, const TCHAR* ComponentName)
@@ -1155,7 +1313,7 @@ void UTainlordCharacterAppearanceComponent::RebindLeaderPose()
 		{
 			UE_LOG(LogTemp, Warning, TEXT("RebindLeaderPose: %s - skeleton mismatch! Follower mesh '%s' may not follow leader correctly"),
 				ComponentName, *FollowerMeshAsset->GetName());
-			// Continue anyway - UE will handle gracefully, but this is a configuration issue
+			bHadCompatibilityFailure = true;
 		}
 
 		// Ensure attachment
@@ -1198,6 +1356,7 @@ void UTainlordCharacterAppearanceComponent::RebindLeaderPose()
 
 	UE_LOG(LogTemp, Log, TEXT("TainlordAppearance::RebindLeaderPose - Rebound %d components, skipped %d (no mesh)"),
 		RebindCount, SkipCount);
+	return !bHadCompatibilityFailure;
 }
 
 // ---------------------------------------------------------------------------

@@ -339,18 +339,66 @@ struct FTainlordAppearanceData
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Customization|Accessories")
 	FName ShouldersId = NAME_None;
 
+	/** Single bracer selection — applied to both arms at runtime. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Customization|Accessories")
+	FName BracerId = NAME_None;
+
+	// --- Deprecated: kept for save-data backward compatibility only ---
+	// MigrateFromLegacy() should be called after deserialization.
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Customization|Accessories|Deprecated")
 	FName LeftBracerId = NAME_None;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Customization|Accessories")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Customization|Accessories|Deprecated")
 	FName RightBracerId = NAME_None;
+
+	/**
+	 * Migrate legacy LeftBracerId/RightBracerId into unified BracerId.
+	 * Call after deserialization of saved profile data.
+	 * Priority: LeftBracerId > RightBracerId (deterministic).
+	 * If both are set, LeftBracerId wins and a log is emitted.
+	 */
+	void MigrateFromLegacy()
+	{
+		if (!BracerId.IsNone())
+		{
+			// Already migrated or set by new system — clear legacy fields
+			LeftBracerId = NAME_None;
+			RightBracerId = NAME_None;
+			return;
+		}
+
+		if (!LeftBracerId.IsNone() && !RightBracerId.IsNone())
+		{
+			// Both set — pick LeftBracerId deterministically
+			BracerId = LeftBracerId;
+			LeftBracerId = NAME_None;
+			RightBracerId = NAME_None;
+			return;
+		}
+
+		if (!LeftBracerId.IsNone())
+		{
+			BracerId = LeftBracerId;
+			LeftBracerId = NAME_None;
+			return;
+		}
+
+		if (!RightBracerId.IsNone())
+		{
+			BracerId = RightBracerId;
+			RightBracerId = NAME_None;
+			return;
+		}
+	}
 
 	/** Returns true if at least one field is set to a non-default value. */
 	bool HasAnySelection() const
 	{
 		return !HeadId.IsNone() || !HairId.IsNone() || !BeardId.IsNone() ||
 			!ArmsId.IsNone() || !LegsId.IsNone() || !SkinToneId.IsNone() ||
-			!ShouldersId.IsNone() || !LeftBracerId.IsNone() || !RightBracerId.IsNone();
+			!ShouldersId.IsNone() || !BracerId.IsNone() ||
+			!LeftBracerId.IsNone() || !RightBracerId.IsNone();  // legacy fallback
 	}
 };
 
@@ -472,16 +520,21 @@ struct FTainlordProfileData
 	// --- Gameplay selections ---
 
 	/**
-	 * Stable ID of the selected build (class archetype).
-	 * Resolved against the build catalog at runtime.
+	 * TRANSITIONAL: Legacy mirror of SelectedMasteryId.
+	 * CommitMasterySelection() writes both fields with the same value.
+	 * Nothing reads SelectedBuildId at runtime — the spawn bridge uses
+	 * SelectedMasteryId exclusively. Kept for save-data backward compatibility.
+	 * TODO: Remove once save migration drops legacy profiles.
 	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Profile|Gameplay")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Profile|Gameplay|Deprecated")
 	FName SelectedBuildId = NAME_None;
 
 	/**
-	 * Stable ID of the selected mastery (specialization tree / class identity).
+	 * AUTHORITATIVE: Stable ID of the selected mastery (specialization tree / class identity).
 	 * Populated during creation stage 3 (Mastery).
-	 * Resolved against a mastery catalog at runtime.
+	 * The spawn bridge reads this field and maps it to FKDMasteryIdentity
+	 * via TainlordCombatRuleLibrary::MapMasteryIdToCombatIdentity().
+	 * This is the single source of truth for mastery selection in the profile.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Profile|Gameplay")
 	FName SelectedMasteryId = NAME_None;

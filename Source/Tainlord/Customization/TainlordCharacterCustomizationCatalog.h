@@ -79,10 +79,11 @@ public:
 	/** Find a shoulders entry by stable ID. Returns null if not found. */
 	const FTainlordShouldersEntry* FindShouldersEntry(FName ShouldersId) const;
 
-	/** Find a left bracer entry by stable ID. Returns null if not found. */
-	const FTainlordBracerEntry* FindBracersLeftEntry(FName LeftBracerId) const;
+	/** Find a bracer entry by stable ID (unified — searches BracersLeft). Returns null if not found. */
+	const FTainlordBracerEntry* FindBracerEntry(FName BracerId) const;
 
-	/** Find a right bracer entry by stable ID. Returns null if not found. */
+	// Deprecated: use FindBracerEntry
+	const FTainlordBracerEntry* FindBracersLeftEntry(FName LeftBracerId) const;
 	const FTainlordBracerEntry* FindBracersRightEntry(FName RightBracerId) const;
 
 	// --- Context-aware validation lookups (C++ only) ---
@@ -111,10 +112,11 @@ public:
 	/** Find a shoulders entry by ID and validate context. Returns null if not allowed. */
 	const FTainlordShouldersEntry* FindShouldersEntryForContext(FName ShouldersId, ECharacterGender Gender, ECharacterRace Race) const;
 
-	/** Find a left bracer entry by ID and validate context. Returns null if not allowed. */
-	const FTainlordBracerEntry* FindBracersLeftEntryForContext(FName LeftBracerId, ECharacterGender Gender, ECharacterRace Race) const;
+	/** Find a bracer entry by ID and validate context (unified — searches BracersLeft). Returns null if not allowed. */
+	const FTainlordBracerEntry* FindBracerEntryForContext(FName BracerId, ECharacterGender Gender, ECharacterRace Race) const;
 
-	/** Find a right bracer entry by ID and validate context. Returns null if not allowed. */
+	// Deprecated: use FindBracerEntryForContext
+	const FTainlordBracerEntry* FindBracersLeftEntryForContext(FName LeftBracerId, ECharacterGender Gender, ECharacterRace Race) const;
 	const FTainlordBracerEntry* FindBracersRightEntryForContext(FName RightBracerId, ECharacterGender Gender, ECharacterRace Race) const;
 
 	// --- Blueprint-safe lookup helpers (return by value with bool success) ---
@@ -147,13 +149,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Customization|Catalog")
 	bool GetShouldersEntry(FName ShouldersId, FTainlordShouldersEntry& OutEntry) const;
 
-	/** Get a left bracer entry by stable ID. Returns true if found. */
+	/** Get a bracer entry by stable ID (unified). Returns true if found. */
 	UFUNCTION(BlueprintCallable, Category = "Customization|Catalog")
-	bool GetBracersLeftEntry(FName LeftBracerId, FTainlordBracerEntry& OutEntry) const;
-
-	/** Get a right bracer entry by stable ID. Returns true if found. */
-	UFUNCTION(BlueprintCallable, Category = "Customization|Catalog")
-	bool GetBracersRightEntry(FName RightBracerId, FTainlordBracerEntry& OutEntry) const;
+	bool GetBracerEntry(FName BracerId, FTainlordBracerEntry& OutEntry) const;
 
 	// --- Filtered lookup helpers ---
 
@@ -185,13 +183,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Customization|Catalog")
 	TArray<FTainlordShouldersEntry> GetFilteredShoulders(ECharacterGender Gender, ECharacterRace Race) const;
 
-	/** Get all left bracer entries allowed for the given gender and race. */
+	/** Get all bracer entries allowed for the given gender and race (unified — from BracersLeft). */
 	UFUNCTION(BlueprintCallable, Category = "Customization|Catalog")
-	TArray<FTainlordBracerEntry> GetFilteredBracersLeft(ECharacterGender Gender, ECharacterRace Race) const;
-
-	/** Get all right bracer entries allowed for the given gender and race. */
-	UFUNCTION(BlueprintCallable, Category = "Customization|Catalog")
-	TArray<FTainlordBracerEntry> GetFilteredBracersRight(ECharacterGender Gender, ECharacterRace Race) const;
+	TArray<FTainlordBracerEntry> GetFilteredBracers(ECharacterGender Gender, ECharacterRace Race) const;
 
 private:
 	/**

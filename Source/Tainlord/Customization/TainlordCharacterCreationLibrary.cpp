@@ -85,6 +85,38 @@ TArray<FTainlordBeardEntry> UTainlordCharacterCreationLibrary::GetAvailableBeard
 	return Catalog->GetFilteredBeards(Gender, Race);
 }
 
+TArray<FTainlordArmsEntry> UTainlordCharacterCreationLibrary::GetAvailableArms(const UObject* WorldContext, ECharacterGender Gender, ECharacterRace Race)
+{
+	UTainlordCharacterCustomizationCatalog* Catalog = FindCatalog(WorldContext);
+	if (!Catalog)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("TainlordCreation: GetAvailableArms - catalog is null"));
+		return TArray<FTainlordArmsEntry>();
+	}
+
+	TArray<FTainlordArmsEntry> FilteredArms = Catalog->GetFilteredArms(Gender, Race);
+	UE_LOG(LogTemp, Log, TEXT("TainlordCreation: GetAvailableArms - Gender=%d, Race=%d, Found=%d entries"),
+		static_cast<int32>(Gender), static_cast<int32>(Race), FilteredArms.Num());
+
+	return FilteredArms;
+}
+
+TArray<FTainlordLegsEntry> UTainlordCharacterCreationLibrary::GetAvailableLegs(const UObject* WorldContext, ECharacterGender Gender, ECharacterRace Race)
+{
+	UTainlordCharacterCustomizationCatalog* Catalog = FindCatalog(WorldContext);
+	if (!Catalog)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("TainlordCreation: GetAvailableLegs - catalog is null"));
+		return TArray<FTainlordLegsEntry>();
+	}
+
+	TArray<FTainlordLegsEntry> FilteredLegs = Catalog->GetFilteredLegs(Gender, Race);
+	UE_LOG(LogTemp, Log, TEXT("TainlordCreation: GetAvailableLegs - Gender=%d, Race=%d, Found=%d entries"),
+		static_cast<int32>(Gender), static_cast<int32>(Race), FilteredLegs.Num());
+
+	return FilteredLegs;
+}
+
 TArray<FTainlordSkinToneEntry> UTainlordCharacterCreationLibrary::GetAvailableSkinTones(const UObject* WorldContext)
 {
 	UTainlordCharacterCustomizationCatalog* Catalog = FindCatalog(WorldContext);
@@ -95,6 +127,28 @@ TArray<FTainlordSkinToneEntry> UTainlordCharacterCreationLibrary::GetAvailableSk
 
 	// Skin tones are not gender/race gated — pass Any to get all
 	return Catalog->GetFilteredSkinTones(ECharacterGender::Any, ECharacterRace::Any);
+}
+
+TArray<FTainlordShouldersEntry> UTainlordCharacterCreationLibrary::GetAvailableShoulders(const UObject* WorldContext, ECharacterGender Gender, ECharacterRace Race)
+{
+	UTainlordCharacterCustomizationCatalog* Catalog = FindCatalog(WorldContext);
+	if (!Catalog)
+	{
+		return TArray<FTainlordShouldersEntry>();
+	}
+
+	return Catalog->GetFilteredShoulders(Gender, Race);
+}
+
+TArray<FTainlordBracerEntry> UTainlordCharacterCreationLibrary::GetAvailableBracers(const UObject* WorldContext, ECharacterGender Gender, ECharacterRace Race)
+{
+	UTainlordCharacterCustomizationCatalog* Catalog = FindCatalog(WorldContext);
+	if (!Catalog)
+	{
+		return TArray<FTainlordBracerEntry>();
+	}
+
+	return Catalog->GetFilteredBracers(Gender, Race);
 }
 
 // ---------------------------------------------------------------------------
@@ -134,6 +188,11 @@ bool UTainlordCharacterCreationLibrary::ApplyPreviewSlot(AActor* PreviewCharacte
 	// Apply the individual slot
 	const FString SlotStr = SlotName.ToString();
 
+	UE_LOG(LogTemp, Log, TEXT("TainlordCreation: ApplyPreviewSlot - Slot='%s', Id='%s', Gender=%d, Race=%d"),
+		*SlotStr, *NewId.ToString(),
+		static_cast<int32>(WorkingProfile.Gender),
+		static_cast<int32>(WorkingProfile.Race));
+
 	if (SlotStr == TEXT("Head"))
 	{
 		return AppearanceComp->ApplyHead(NewId);
@@ -146,6 +205,14 @@ bool UTainlordCharacterCreationLibrary::ApplyPreviewSlot(AActor* PreviewCharacte
 	{
 		return AppearanceComp->ApplyBeard(NewId);
 	}
+	else if (SlotStr == TEXT("Arms"))
+	{
+		return AppearanceComp->ApplyArms(NewId);
+	}
+	else if (SlotStr == TEXT("Legs"))
+	{
+		return AppearanceComp->ApplyLegs(NewId);
+	}
 	else if (SlotStr == TEXT("SkinTone"))
 	{
 		return AppearanceComp->ApplySkinTone(NewId);
@@ -154,17 +221,13 @@ bool UTainlordCharacterCreationLibrary::ApplyPreviewSlot(AActor* PreviewCharacte
 	{
 		return AppearanceComp->ApplyShoulders(NewId);
 	}
-	else if (SlotStr == TEXT("LeftBracer"))
+	else if (SlotStr == TEXT("Bracer"))
 	{
-		return AppearanceComp->ApplyLeftBracer(NewId);
-	}
-	else if (SlotStr == TEXT("RightBracer"))
-	{
-		return AppearanceComp->ApplyRightBracer(NewId);
+		return AppearanceComp->ApplyBracer(NewId);
 	}
 	else
 	{
-		UE_LOG(LogTemp, Warning, TEXT("TainlordCreation: ApplyPreviewSlot - unknown slot name '%s'. Valid: Head, Hair, Beard, SkinTone, Shoulders, LeftBracer, RightBracer"), *SlotStr);
+		UE_LOG(LogTemp, Warning, TEXT("TainlordCreation: ApplyPreviewSlot - unknown slot name '%s'. Valid: Head, Hair, Beard, Arms, Legs, SkinTone, Shoulders, Bracer"), *SlotStr);
 		return false;
 	}
 }
@@ -320,6 +383,37 @@ bool UTainlordCharacterCreationLibrary::SanitizeAppearanceForContext(const UObje
 			UE_LOG(LogTemp, Log, TEXT("TainlordCreation: Clearing beard '%s' - not valid for new context"),
 				*InOutProfile.AppearanceData.BeardId.ToString());
 			InOutProfile.AppearanceData.BeardId = NAME_None;
+			bAnyCleared = true;
+		}
+	}
+
+	// Check shoulders
+	if (!InOutProfile.AppearanceData.ShouldersId.IsNone())
+	{
+		if (!Catalog->FindShouldersEntryForContext(InOutProfile.AppearanceData.ShouldersId, InOutProfile.Gender, InOutProfile.Race))
+		{
+			UE_LOG(LogTemp, Log, TEXT("TainlordCreation: Clearing shoulders '%s' - not valid for new context (Gender=%d, Race=%d)"),
+				*InOutProfile.AppearanceData.ShouldersId.ToString(),
+				static_cast<int32>(InOutProfile.Gender),
+				static_cast<int32>(InOutProfile.Race));
+			InOutProfile.AppearanceData.ShouldersId = NAME_None;
+			bAnyCleared = true;
+		}
+	}
+
+	// Migrate legacy bracer fields first
+	InOutProfile.AppearanceData.MigrateFromLegacy();
+
+	// Check unified bracer
+	if (!InOutProfile.AppearanceData.BracerId.IsNone())
+	{
+		if (!Catalog->FindBracerEntryForContext(InOutProfile.AppearanceData.BracerId, InOutProfile.Gender, InOutProfile.Race))
+		{
+			UE_LOG(LogTemp, Log, TEXT("TainlordCreation: Clearing bracer '%s' - not valid for new context (Gender=%d, Race=%d)"),
+				*InOutProfile.AppearanceData.BracerId.ToString(),
+				static_cast<int32>(InOutProfile.Gender),
+				static_cast<int32>(InOutProfile.Race));
+			InOutProfile.AppearanceData.BracerId = NAME_None;
 			bAnyCleared = true;
 		}
 	}

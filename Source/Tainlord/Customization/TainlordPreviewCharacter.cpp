@@ -14,10 +14,17 @@
 
 namespace
 {
+	static const TCHAR* CanonicalMaleBodyMeshPath = TEXT("/Game/ModularPrep/Male01/Body.Body");
+
 	UAnimSequence* LoadPreviewIdleAnimation()
 	{
 		static const TCHAR* IdleAnimPath = TEXT("/Game/DynamicSwordAnimset/Animations/InPlace/Idle_Eqip_01.Idle_Eqip_01");
 		return LoadObject<UAnimSequence>(nullptr, IdleAnimPath);
+	}
+
+	USkeletalMesh* LoadCanonicalPreviewBodyMesh()
+	{
+		return LoadObject<USkeletalMesh>(nullptr, CanonicalMaleBodyMeshPath);
 	}
 }
 
@@ -120,6 +127,27 @@ ATainlordPreviewCharacter::ATainlordPreviewCharacter()
 void ATainlordPreviewCharacter::BeginPlay()
 {
 	Super::BeginPlay();
+
+	if (USkeletalMeshComponent* BodyMesh = GetMesh())
+	{
+		if (!BodyMesh->GetSkeletalMeshAsset())
+		{
+			if (USkeletalMesh* FallbackBodyMesh = LoadCanonicalPreviewBodyMesh())
+			{
+				BodyMesh->SetSkeletalMesh(FallbackBodyMesh);
+				BodyMesh->SetVisibility(true);
+				BodyMesh->RefreshBoneTransforms();
+				BodyMesh->UpdateBounds();
+				UE_LOG(LogTemp, Warning, TEXT("TainlordPreviewCharacter: Body mesh was empty - applied canonical preview fallback '%s'"),
+					*FallbackBodyMesh->GetName());
+			}
+			else
+			{
+				UE_LOG(LogTemp, Warning, TEXT("TainlordPreviewCharacter: Failed to load canonical preview body fallback '%s'"),
+					CanonicalMaleBodyMeshPath);
+			}
+		}
+	}
 
 	// --- Debug: log current mesh asset names before any runtime logic ---
 	UE_LOG(LogTemp, Log, TEXT("TainlordPreviewCharacter::BeginPlay — Initial mesh assets: "
@@ -245,6 +273,24 @@ void ATainlordPreviewCharacter::OnConstruction(const FTransform& Transform)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("TainlordPreviewCharacter::OnConstruction - Body mesh is null"));
 		return;
+	}
+	if (!BodyMesh->GetSkeletalMeshAsset())
+	{
+		if (USkeletalMesh* FallbackBodyMesh = LoadCanonicalPreviewBodyMesh())
+		{
+			BodyMesh->SetSkeletalMesh(FallbackBodyMesh);
+			BodyMesh->SetVisibility(true);
+			BodyMesh->RefreshBoneTransforms();
+			BodyMesh->UpdateBounds();
+			UE_LOG(LogTemp, Warning, TEXT("TainlordPreviewCharacter::OnConstruction - Body mesh was empty, applied canonical preview fallback '%s'"),
+				*FallbackBodyMesh->GetName());
+		}
+		else
+		{
+			UE_LOG(LogTemp, Warning, TEXT("TainlordPreviewCharacter::OnConstruction - failed to load canonical preview body fallback '%s'"),
+				CanonicalMaleBodyMeshPath);
+			return;
+		}
 	}
 
 	// Helper lambda to rebind a follower component to its leader

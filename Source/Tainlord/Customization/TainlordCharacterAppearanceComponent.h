@@ -206,6 +206,9 @@ private:
 
 	/** Default meshes captured from the owning actor/Blueprint at BeginPlay. */
 	UPROPERTY(Transient)
+	TObjectPtr<USkeletalMesh> DefaultBodyMeshAsset;
+
+	UPROPERTY(Transient)
 	TObjectPtr<USkeletalMesh> DefaultHeadMeshAsset;
 
 	UPROPERTY(Transient)
@@ -271,9 +274,11 @@ public:
 	 * from being lost when SetSkeletalMesh() invalidates the bind.
 	 * Also called after animation mode changes on the body mesh.
 	 */
-	void RebindLeaderPose();
+	bool RebindLeaderPose();
 
 private:
+	/** Ensure the body leader mesh exists, loading the canonical male body as fallback when needed. */
+	bool EnsureBodyLeaderMesh();
 
 	/** Create or update dynamic material instances on the target mesh for skin tone. */
 	void ApplySkinToneToMesh(USkeletalMeshComponent* MeshComp, const FTainlordSkinToneEntry& Entry);

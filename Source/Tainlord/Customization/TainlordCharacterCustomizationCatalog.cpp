@@ -455,19 +455,19 @@ const FTainlordShouldersEntry* UTainlordCharacterCustomizationCatalog::FindShoul
 }
 
 // ---------------------------------------------------------------------------
-// Accessory lookups — Bracers (Left)
+// Accessory lookups — Bracers (Unified: BracersLeft as single source)
 // ---------------------------------------------------------------------------
 
-const FTainlordBracerEntry* UTainlordCharacterCustomizationCatalog::FindBracersLeftEntry(FName LeftBracerId) const
+const FTainlordBracerEntry* UTainlordCharacterCustomizationCatalog::FindBracerEntry(FName BracerId) const
 {
-	if (LeftBracerId.IsNone())
+	if (BracerId.IsNone())
 	{
 		return nullptr;
 	}
 
 	for (const FTainlordBracerEntry& Entry : BracersLeft)
 	{
-		if (Entry.Id == LeftBracerId)
+		if (Entry.Id == BracerId)
 		{
 			return &Entry;
 		}
@@ -476,9 +476,9 @@ const FTainlordBracerEntry* UTainlordCharacterCustomizationCatalog::FindBracersL
 	return nullptr;
 }
 
-const FTainlordBracerEntry* UTainlordCharacterCustomizationCatalog::FindBracersLeftEntryForContext(FName LeftBracerId, ECharacterGender Gender, ECharacterRace Race) const
+const FTainlordBracerEntry* UTainlordCharacterCustomizationCatalog::FindBracerEntryForContext(FName BracerId, ECharacterGender Gender, ECharacterRace Race) const
 {
-	const FTainlordBracerEntry* Entry = FindBracersLeftEntry(LeftBracerId);
+	const FTainlordBracerEntry* Entry = FindBracerEntry(BracerId);
 	if (!Entry)
 	{
 		return nullptr;
@@ -492,31 +492,13 @@ const FTainlordBracerEntry* UTainlordCharacterCustomizationCatalog::FindBracersL
 	return Entry;
 }
 
-// ---------------------------------------------------------------------------
-// Accessory lookups — Bracers (Right)
-// ---------------------------------------------------------------------------
-
-const FTainlordBracerEntry* UTainlordCharacterCustomizationCatalog::FindBracersRightEntry(FName RightBracerId) const
-{
-	if (RightBracerId.IsNone())
-	{
-		return nullptr;
-	}
-
-	for (const FTainlordBracerEntry& Entry : BracersRight)
-	{
-		if (Entry.Id == RightBracerId)
-		{
-			return &Entry;
-		}
-	}
-
-	return nullptr;
-}
-
+// Deprecated — delegate to unified FindBracerEntry
+const FTainlordBracerEntry* UTainlordCharacterCustomizationCatalog::FindBracersLeftEntry(FName LeftBracerId) const { return FindBracerEntry(LeftBracerId); }
+const FTainlordBracerEntry* UTainlordCharacterCustomizationCatalog::FindBracersLeftEntryForContext(FName LeftBracerId, ECharacterGender Gender, ECharacterRace Race) const { return FindBracerEntryForContext(LeftBracerId, Gender, Race); }
+const FTainlordBracerEntry* UTainlordCharacterCustomizationCatalog::FindBracersRightEntry(FName RightBracerId) const { return FindBracerEntry(RightBracerId); }
 const FTainlordBracerEntry* UTainlordCharacterCustomizationCatalog::FindBracersRightEntryForContext(FName RightBracerId, ECharacterGender Gender, ECharacterRace Race) const
 {
-	const FTainlordBracerEntry* Entry = FindBracersRightEntry(RightBracerId);
+	const FTainlordBracerEntry* Entry = FindBracerEntry(RightBracerId);
 	if (!Entry)
 	{
 		return nullptr;
@@ -545,20 +527,9 @@ bool UTainlordCharacterCustomizationCatalog::GetShouldersEntry(FName ShouldersId
 	return false;
 }
 
-bool UTainlordCharacterCustomizationCatalog::GetBracersLeftEntry(FName LeftBracerId, FTainlordBracerEntry& OutEntry) const
+bool UTainlordCharacterCustomizationCatalog::GetBracerEntry(FName BracerId, FTainlordBracerEntry& OutEntry) const
 {
-	const FTainlordBracerEntry* Found = FindBracersLeftEntry(LeftBracerId);
-	if (Found)
-	{
-		OutEntry = *Found;
-		return true;
-	}
-	return false;
-}
-
-bool UTainlordCharacterCustomizationCatalog::GetBracersRightEntry(FName RightBracerId, FTainlordBracerEntry& OutEntry) const
-{
-	const FTainlordBracerEntry* Found = FindBracersRightEntry(RightBracerId);
+	const FTainlordBracerEntry* Found = FindBracerEntry(BracerId);
 	if (Found)
 	{
 		OutEntry = *Found;
@@ -590,29 +561,10 @@ TArray<FTainlordShouldersEntry> UTainlordCharacterCustomizationCatalog::GetFilte
 	return Filtered;
 }
 
-TArray<FTainlordBracerEntry> UTainlordCharacterCustomizationCatalog::GetFilteredBracersLeft(ECharacterGender Gender, ECharacterRace Race) const
+TArray<FTainlordBracerEntry> UTainlordCharacterCustomizationCatalog::GetFilteredBracers(ECharacterGender Gender, ECharacterRace Race) const
 {
 	TArray<FTainlordBracerEntry> Filtered;
 	for (const FTainlordBracerEntry& Entry : BracersLeft)
-	{
-		if (!Entry.IsValid())
-		{
-			continue;
-		}
-
-		if (MatchesFilter(Entry.GenderFilter, Gender) && MatchesFilter(Entry.RaceFilter, Race))
-		{
-			Filtered.Add(Entry);
-		}
-	}
-
-	return Filtered;
-}
-
-TArray<FTainlordBracerEntry> UTainlordCharacterCustomizationCatalog::GetFilteredBracersRight(ECharacterGender Gender, ECharacterRace Race) const
-{
-	TArray<FTainlordBracerEntry> Filtered;
-	for (const FTainlordBracerEntry& Entry : BracersRight)
 	{
 		if (!Entry.IsValid())
 		{

@@ -53,10 +53,34 @@ public:
 	static TArray<FTainlordBeardEntry> GetAvailableBeards(const UObject* WorldContext, ECharacterGender Gender, ECharacterRace Race);
 
 	/**
+	 * Get all modular arms options available for the given gender and race.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Creation|Filtering", meta = (WorldContext = "WorldContext"))
+	static TArray<FTainlordArmsEntry> GetAvailableArms(const UObject* WorldContext, ECharacterGender Gender, ECharacterRace Race);
+
+	/**
+	 * Get all modular legs options available for the given gender and race.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Creation|Filtering", meta = (WorldContext = "WorldContext"))
+	static TArray<FTainlordLegsEntry> GetAvailableLegs(const UObject* WorldContext, ECharacterGender Gender, ECharacterRace Race);
+
+	/**
 	 * Get all skin tone options. Skin tones are not gender/race gated.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Creation|Filtering", meta = (WorldContext = "WorldContext"))
 	static TArray<FTainlordSkinToneEntry> GetAvailableSkinTones(const UObject* WorldContext);
+
+	/**
+	 * Get all shoulders accessory options available for the given gender and race.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Creation|Filtering", meta = (WorldContext = "WorldContext"))
+	static TArray<FTainlordShouldersEntry> GetAvailableShoulders(const UObject* WorldContext, ECharacterGender Gender, ECharacterRace Race);
+
+	/**
+	 * Get all bracer options available for the given gender and race (unified — single slot, both arms).
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Creation|Filtering", meta = (WorldContext = "WorldContext"))
+	static TArray<FTainlordBracerEntry> GetAvailableBracers(const UObject* WorldContext, ECharacterGender Gender, ECharacterRace Race);
 
 	// --- Live preview ---
 
